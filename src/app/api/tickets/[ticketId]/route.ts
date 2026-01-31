@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// backend api url
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+// express backend api url
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export async function GET(
   request: NextRequest,
@@ -26,9 +26,9 @@ export async function GET(
       );
     }
 
-    // fetch ticket from backend
+    // proxy to express backend
     const response = await fetch(
-      `${BACKEND_URL}/api/tickets/${ticketId}?merchant_id=${merchantId}`,
+      `${API_BASE_URL}/api/tickets/${ticketId}?merchant_id=${merchantId}`,
       {
         method: "GET",
         headers: {
@@ -37,26 +37,13 @@ export async function GET(
       }
     );
 
-    if (!response.ok) {
-      if (response.status === 404) {
-        return NextResponse.json(
-          { success: false, error: "Ticket not found" },
-          { status: 404 }
-        );
-      }
-      throw new Error(`Backend returned ${response.status}`);
-    }
-
     const data = await response.json();
 
-    return NextResponse.json({
-      success: true,
-      ticket: data.ticket || data,
-    });
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    console.error("Error fetching ticket:", error);
+    console.error("[Ticket API Proxy] Error:", error);
     return NextResponse.json(
-      { success: false, error: "Failed to fetch ticket" },
+      { success: false, error: "Failed to connect to backend" },
       { status: 500 }
     );
   }

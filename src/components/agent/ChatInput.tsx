@@ -50,7 +50,7 @@ export const ChatInput = memo(function ChatInput({
     <div className="border-border/40 bg-background border-t p-3">
       <div
         className={cn(
-          "bg-muted/50 flex flex-col rounded-xl",
+          "bg-input/20 flex flex-col rounded-xl",
           "ring-1 ring-transparent transition-all duration-200",
           isFocused && "ring-border/50",
         )}
@@ -67,7 +67,7 @@ export const ChatInput = memo(function ChatInput({
             disabled={disabled || isLoading}
             rows={1}
             className={cn(
-              "w-full resize-none border-none bg-transparent text-sm leading-relaxed shadow-none focus-visible:ring-0",
+              "w-full resize-none border-none  text-sm leading-relaxed shadow-none focus-visible:ring-0",
               "placeholder:text-muted-foreground/60",
               "disabled:cursor-not-allowed disabled:opacity-50",
             )}

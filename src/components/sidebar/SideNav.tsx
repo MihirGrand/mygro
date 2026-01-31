@@ -74,9 +74,13 @@ export default function SideNav() {
           <div className="mt-4 shrink-0 pb-2">
             <div className="my-4 mb-6 flex items-center justify-center">
               {isSidebarExpanded ? (
+                <div className="classname">
                 <h1 className="text-primary text-4xl font-black tracking-tight">
                   MYGRO
-                </h1>
+                  </h1>
+                  <div className="w-34 mt-2 h-[2px] bg-primary"></div>
+                </div>
+
               ) : (
                 <span className="text-primary text-4xl font-black tracking-tight">M</span>
               )}

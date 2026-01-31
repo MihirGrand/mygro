@@ -25,6 +25,7 @@ export interface AgentResponse {
   ticket_id: string;
   agent_message: string;
   cards: ActionCard[];
+  tools_used?: string[];
 }
 
 // reasoning step for chain of thought display
@@ -43,6 +44,7 @@ export interface ChatMessage {
   cards?: ActionCard[];
   ticketId?: string;
   reasoning?: ReasoningStep[];
+  toolsUsed?: string[];
 }
 
 // ticket from backend
@@ -64,4 +66,5 @@ export interface TicketHistoryItem {
   content: string;
   timestamp: string;
   cards?: ActionCard[];
+  tools_used?: string[];
 }

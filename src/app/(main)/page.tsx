@@ -120,7 +120,7 @@ function TicketCard({
         className={cn(
           "group cursor-pointer border p-4 transition-all hover:border-border",
           isSelected
-            ? "border-primary bg-primary/5"
+            ? "border-primary/50 bg-primary/5"
             : "border-transparent bg-card hover:bg-muted/50",
         )}
         onClick={() => onClick?.(ticket)}
@@ -373,10 +373,7 @@ export default function SupportPage() {
                 <RefreshCw className={cn("h-4 w-4", isLoadingTickets && "animate-spin")} />
                 Refresh
               </Button>
-              <Button onClick={handleStartConversation} className="gap-2">
-                <Plus className="h-4 w-4" />
-                New Conversation
-              </Button>
+
             </div>
           </div>
 

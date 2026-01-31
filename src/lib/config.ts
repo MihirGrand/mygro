@@ -1,26 +1,26 @@
-// central config for webhook urls and api endpoints
+// express backend api url
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export const config = {
-  webhooks: {
-    // use our own api proxy to avoid cors issues
-    ticket: "/api/agent/send",
-
-    // action webhooks (can be extended as needed)
-    actions: {
-      rotateKeys: "/api/actions/rotate-keys",
-      escalate: "/api/ticket/escalate",
-      increaseRateLimit: "/api/actions/increase-rate-limit",
-      resendWebhooks: "/api/actions/resend-webhooks",
-    },
-  },
-
-  // external webhook url (used server-side only)
-  externalWebhooks: {
-    ticket: process.env.WEBHOOK_TICKET_URL || "https://abstruse.app.n8n.cloud/webhook-test/ticket",
-  },
-
   api: {
-    baseUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000",
+    baseUrl: API_BASE_URL,
+
+    // agent endpoint on express backend
+    agent: `${API_BASE_URL}/api/agent`,
+
+    // ticket endpoints on express backend
+    tickets: `${API_BASE_URL}/api/tickets`,
+
+    // chat history endpoint on express backend
+    chatHistory: `${API_BASE_URL}/api/chat-history`,
+  },
+
+  // action webhooks (will be handled by express backend)
+  actions: {
+    rotateKeys: `${API_BASE_URL}/api/actions/rotate-keys`,
+    escalate: `${API_BASE_URL}/api/actions/escalate`,
+    increaseRateLimit: `${API_BASE_URL}/api/actions/increase-rate-limit`,
+    resendWebhooks: `${API_BASE_URL}/api/actions/resend-webhooks`,
   },
 
   docs: {

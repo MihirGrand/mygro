@@ -3,7 +3,7 @@ export type {
   ActionCard,
   AgentResponse,
   ReasoningStep,
-  ChatMessage,
+  ChatMessage as ChatMessageType,
   Ticket,
   TicketHistoryItem,
   TicketMessagePayload,
@@ -18,8 +18,9 @@ export { ChatMessage } from "./ChatMessage";
 export { ChatInput } from "./ChatInput";
 export { ActionCards } from "./ActionCards";
 export { MessageActions } from "./MessageActions";
-export { ThinkingIndicator, StatusIcon } from "./ThinkingIndicator";
-export { InlineChainOfThought } from "./InlineChainOfThought";
+export { ThinkingIndicator } from "./ThinkingIndicator";
+export { ToolsUsed } from "./ToolsUsed";
+export { MarkdownContent } from "./MarkdownContent";
 
 // hooks
 export { useAgentChat } from "./useAgentChat";

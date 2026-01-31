@@ -3,9 +3,10 @@
 import { memo } from "react";
 import { motion } from "framer-motion";
 import { cn } from "~/lib/utils";
-import { InlineChainOfThought } from "./InlineChainOfThought";
+import { ToolsUsed } from "./ToolsUsed";
 import { ActionCards } from "./ActionCards";
 import { MessageActions } from "./MessageActions";
+import { MarkdownContent } from "./MarkdownContent";
 import { formatTime } from "./utils";
 import type { ChatMessage as ChatMessageType, ActionCard } from "./types";
 
@@ -44,12 +45,16 @@ export const ChatMessage = memo(function ChatMessage({
               : "text-foreground",
           )}
         >
-          <p className="text-sm leading-relaxed whitespace-pre-wrap">
-            {message.content}
-          </p>
+          {isUser ? (
+            <p className="text-sm leading-relaxed whitespace-pre-wrap">
+              {message.content}
+            </p>
+          ) : (
+            <MarkdownContent content={message.content} />
+          )}
 
-          {!isUser && message.reasoning && message.reasoning.length > 0 && (
-            <InlineChainOfThought steps={message.reasoning} />
+          {!isUser && message.toolsUsed && message.toolsUsed.length > 0 && (
+            <ToolsUsed tools={message.toolsUsed} />
           )}
 
           {!isUser && message.cards && message.cards.length > 0 && (

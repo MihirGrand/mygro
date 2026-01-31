@@ -15,5 +15,57 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  tickets Ticket[]
+
   @@map("users")
+}
+
+model Ticket {
+  id         String       @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId   String       @unique
+  merchantId String       @db.ObjectId
+  merchant   User         @relation(fields: [merchantId], references: [id])
+  status     TicketStatus @default(open)
+  priority   Priority     @default(medium)
+  title      String?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  chatHistory ChatHistory?
+
+  @@index([merchantId])
+  @@map("tickets")
+}
+
+model ChatHistory {
+  id        String          @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId String          @unique @db.ObjectId
+  ticket    Ticket          @relation(fields: [sessionId], references: [id])
+  messages  ChatMessage[]
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  @@map("chat_histories")
+}
+
+type ChatMessage {
+  role      String
+  content   String
+  timestamp DateTime @default(now())
+  cards     Json?
+  toolsUsed String[]
+}
+
+enum TicketStatus {
+  open
+  in_progress
+  resolved
+  closed
+}
+
+enum Priority {
+  low
+  medium
+  high
+  urgent
 }

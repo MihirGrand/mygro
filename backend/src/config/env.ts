@@ -11,6 +11,9 @@ interface Config {
   cors: {
     origin: string;
   };
+  webhook: {
+    ticketUrl: string;
+  };
 }
 
 export const config: Config = {
@@ -21,6 +24,9 @@ export const config: Config = {
   },
   cors: {
     origin: process.env.CORS_ORIGIN || "*",
+  },
+  webhook: {
+    ticketUrl: process.env.WEBHOOK_TICKET_URL || "https://abstruse.app.n8n.cloud/webhook/ticket",
   },
 };
 

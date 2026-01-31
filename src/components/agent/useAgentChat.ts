@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import type { ChatMessage, ReasoningStep, ActionCard, AgentResponse } from "./types";
+import type { ChatMessage, ActionCard, AgentResponse } from "./types";
 import { getUser } from "~/hooks/useUser";
+import { config } from "~/lib/config";
 
 // generates unique id
 function generateId(prefix: string) {
@@ -22,7 +23,6 @@ export function useAgentChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [reasoningSteps, setReasoningSteps] = useState<ReasoningStep[]>([]);
   const [currentTicketId, setCurrentTicketId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -36,9 +36,9 @@ export function useAgentChat() {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
-  }, [messages, isLoading, reasoningSteps]);
+  }, [messages, isLoading]);
 
-  // send message to agent
+  // send message to agent via express backend
   const sendMessage = useCallback(async () => {
     if (!inputValue.trim() || isLoading) return;
 
@@ -59,27 +59,7 @@ export function useAgentChat() {
     setInputValue("");
     setIsLoading(true);
 
-    // initialize reasoning steps
-    const steps: ReasoningStep[] = [
-      { id: "receive", label: "Receiving your message", status: "active" },
-      { id: "process", label: "Processing request", status: "pending" },
-      { id: "respond", label: "Generating response", status: "pending" },
-    ];
-    setReasoningSteps(steps);
-
     try {
-      // step 1: receive
-      await new Promise((r) => setTimeout(r, 300));
-      setReasoningSteps((prev) =>
-        prev.map((s) =>
-          s.id === "receive"
-            ? { ...s, status: "complete" }
-            : s.id === "process"
-              ? { ...s, status: "active" }
-              : s,
-        ),
-      );
-
       // build payload
       const payload = {
         _id: currentTicketId,
@@ -89,35 +69,23 @@ export function useAgentChat() {
         },
       };
 
-      // step 2: process - send to our api proxy
-      const response = await fetch("/api/agent", {
+      // send to express backend
+      const response = await fetch(config.api.agent, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
-      const data: AgentResponse & { success?: boolean; error?: string } = await response.json();
+      const responseData = await response.json();
 
-      setReasoningSteps((prev) =>
-        prev.map((s) =>
-          s.id === "process"
-            ? { ...s, status: "complete" }
-            : s.id === "respond"
-              ? { ...s, status: "active" }
-              : s,
-        ),
-      );
+      // extract data from api response wrapper
+      const data: AgentResponse & { success?: boolean; error?: string; tools_used?: string[] } =
+        responseData.data || responseData;
 
       // store ticket id for subsequent messages
       if (data.ticket_id && !currentTicketId) {
         setCurrentTicketId(data.ticket_id);
       }
-
-      // step 3: respond
-      await new Promise((r) => setTimeout(r, 200));
-      setReasoningSteps((prev) =>
-        prev.map((s) => (s.id === "respond" ? { ...s, status: "complete" } : s)),
-      );
 
       const assistantMessage: ChatMessage = {
         id: generateId("msg"),
@@ -126,21 +94,12 @@ export function useAgentChat() {
         timestamp: Date.now(),
         cards: data.cards || [],
         ticketId: data.ticket_id,
-        reasoning: steps.map((s) => ({ ...s, status: "complete" as const })),
+        toolsUsed: data.tools_used || [],
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
       console.error("Error sending message:", error);
-
-      // mark steps as error
-      setReasoningSteps((prev) =>
-        prev.map((s) =>
-          s.status === "active" || s.status === "pending"
-            ? { ...s, status: "error" }
-            : s,
-        ),
-      );
 
       const errorMessage: ChatMessage = {
         id: generateId("msg"),
@@ -156,7 +115,6 @@ export function useAgentChat() {
       });
     } finally {
       setIsLoading(false);
-      setReasoningSteps([]);
     }
   }, [inputValue, isLoading, currentTicketId]);
 
@@ -172,7 +130,7 @@ export function useAgentChat() {
         description: `Executing: ${card.action_payload.webhook_to_call}`,
       });
 
-      // TODO: implement actual action execution
+      // TODO: implement actual action execution via express backend
       const actionMessage: ChatMessage = {
         id: generateId("msg"),
         role: "assistant",
@@ -188,13 +146,12 @@ export function useAgentChat() {
   const startNewConversation = useCallback(() => {
     setMessages([WELCOME_MESSAGE]);
     setInputValue("");
-    setReasoningSteps([]);
     setCurrentTicketId(null);
   }, []);
 
   // load existing ticket conversation
   const loadTicketConversation = useCallback(
-    (ticketId: string, chatHistory: Array<{ role: "user" | "assistant"; content: string; timestamp: string; cards?: ActionCard[] }>) => {
+    (ticketId: string, chatHistory: Array<{ role: "user" | "assistant"; content: string; timestamp: string; cards?: ActionCard[]; tools_used?: string[] }>) => {
       const loadedMessages: ChatMessage[] = chatHistory.map((item, index) => ({
         id: `loaded-${ticketId}-${index}`,
         role: item.role,
@@ -202,6 +159,7 @@ export function useAgentChat() {
         timestamp: new Date(item.timestamp).getTime(),
         cards: item.cards,
         ticketId: item.role === "assistant" ? ticketId : undefined,
+        toolsUsed: item.tools_used,
       }));
 
       setMessages(loadedMessages.length > 0 ? loadedMessages : [WELCOME_MESSAGE]);
@@ -215,7 +173,6 @@ export function useAgentChat() {
     inputValue,
     setInputValue,
     isLoading,
-    reasoningSteps,
     scrollRef,
     currentTicketId,
     sendMessage,

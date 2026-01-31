@@ -27,7 +27,6 @@ export function AgentPanel({
     inputValue,
     setInputValue,
     isLoading,
-    reasoningSteps,
     scrollRef,
     currentTicketId,
     sendMessage,
@@ -91,9 +90,7 @@ export function AgentPanel({
           ))}
 
           <AnimatePresence mode="wait">
-            {isLoading && (
-              <ThinkingIndicator key="thinking" steps={reasoningSteps} />
-            )}
+            {isLoading && <ThinkingIndicator key="thinking" />}
           </AnimatePresence>
         </div>
       </ScrollArea>

@@ -439,11 +439,11 @@ export default function TestingStudioPage() {
             <h2 className="font-semibold">Error Simulators</h2>
           </div>
           <p className="text-muted-foreground mt-1 text-sm">
-            Trigger intentional errors to test the self-healing agent
+             Intentional errors to test the self-healing agent
           </p>
         </div>
 
-        <ScrollArea className="h-[calc(100vh-140px)]">
+        <ScrollArea className="h-[calc(100vh-80px)]">
           <div className="space-y-4 p-4">
             {TEST_CARDS.map((card) => (
               <Card key={card.id} className="p-4">

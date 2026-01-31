@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// backend api url
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+// express backend api url
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export async function GET(request: NextRequest) {
   try {
@@ -15,9 +15,9 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // fetch tickets from backend
+    // proxy to express backend
     const response = await fetch(
-      `${BACKEND_URL}/api/tickets?merchant_id=${merchantId}`,
+      `${API_BASE_URL}/api/tickets?merchant_id=${merchantId}`,
       {
         method: "GET",
         headers: {
@@ -26,20 +26,14 @@ export async function GET(request: NextRequest) {
       }
     );
 
-    if (!response.ok) {
-      // if backend returns error, return empty array for now
-      return NextResponse.json({ success: true, tickets: [] });
-    }
-
     const data = await response.json();
 
-    return NextResponse.json({
-      success: true,
-      tickets: data.tickets || data || [],
-    });
+    return NextResponse.json(data, { status: response.status });
   } catch (error) {
-    console.error("Error fetching tickets:", error);
-    // return empty array on error for graceful degradation
-    return NextResponse.json({ success: true, tickets: [] });
+    console.error("[Tickets API Proxy] Error:", error);
+    return NextResponse.json(
+      { success: false, error: "Failed to connect to backend" },
+      { status: 500 }
+    );
   }
 }

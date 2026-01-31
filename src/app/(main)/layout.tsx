@@ -66,7 +66,7 @@ export default function MainLayout({
               <Menu className="h-5 w-5" />
               <span className="sr-only">Toggle menu</span>
             </Button>
-            <span className="text-primary font-bold">Mygro </span>
+            <span className="text-primary font-bold">Mygro</span>
           </div>
         </div>
 
