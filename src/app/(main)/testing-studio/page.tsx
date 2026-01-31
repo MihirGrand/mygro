@@ -45,10 +45,11 @@ interface TestCard {
   correctValue: string;
   inputLabel: string;
   inputPlaceholder: string;
+  eventType: string;
 }
 
 const WEBHOOK_URL =
-  "https://roses-alt-python-eric.trycloudflare.com/webhook-test/system-signal";
+  "https://abstruse.app.n8n.cloud/webhook-test/system-signal";
 
 // test cards configuration
 const TEST_CARDS: TestCard[] = [
@@ -57,96 +58,104 @@ const TEST_CARDS: TestCard[] = [
     title: "API Token Mismatch",
     description: "Test invalid API key authentication",
     icon: <Key className="h-5 w-5" />,
-    errorCode: "API_KEY_INVALID",
-    endpoint: "POST /v1/checkout/capture",
-    defaultValue: "xxxxy",
-    correctValue: "xxxxx",
+    errorCode: "AUTH_401",
+    endpoint: "GET /v2/products",
+    defaultValue: "sk_test_invalid_token",
+    correctValue: "sk_live_valid_token",
     inputLabel: "API Token",
     inputPlaceholder: "Enter API token",
+    eventType: "auth_failure",
   },
   {
     id: "cors",
     title: "CORS Error",
     description: "Simulate cross-origin request failure",
     icon: <Shield className="h-5 w-5" />,
-    errorCode: "CORS_POLICY_BLOCKED",
-    endpoint: "OPTIONS /v1/api/checkout",
+    errorCode: "CORS_403",
+    endpoint: "OPTIONS /v2/checkout",
     defaultValue: "http://malicious-site.com",
     correctValue: "https://shop.merchant.com",
     inputLabel: "Origin",
     inputPlaceholder: "Enter origin URL",
+    eventType: "cors_violation",
   },
   {
     id: "rate-limit",
     title: "Rate Limit Error",
     description: "Test API rate limiting (429)",
     icon: <Zap className="h-5 w-5" />,
-    errorCode: "RATE_LIMIT_EXCEEDED",
-    endpoint: "POST /v1/orders/bulk",
+    errorCode: "RATE_429",
+    endpoint: "POST /v2/orders/bulk",
     defaultValue: "1500",
     correctValue: "100",
     inputLabel: "Requests/min",
     inputPlaceholder: "Enter request count",
+    eventType: "rate_limit_exceeded",
   },
   {
     id: "webhook-fail",
     title: "Webhook Delivery Failure",
     description: "Test failed webhook delivery",
     icon: <Wifi className="h-5 w-5" />,
-    errorCode: "WEBHOOK_DELIVERY_FAILED",
+    errorCode: "WEBHOOK_FAIL",
     endpoint: "POST /webhooks/order-created",
     defaultValue: "https://invalid-endpoint.local",
     correctValue: "https://merchant.com/webhooks",
     inputLabel: "Webhook URL",
     inputPlaceholder: "Enter webhook URL",
+    eventType: "webhook_failure",
   },
   {
     id: "timeout",
     title: "API Timeout",
     description: "Simulate slow API response",
     icon: <Clock className="h-5 w-5" />,
-    errorCode: "REQUEST_TIMEOUT",
-    endpoint: "GET /v1/inventory/sync",
+    errorCode: "TIMEOUT_504",
+    endpoint: "GET /v2/inventory/sync",
     defaultValue: "30000",
     correctValue: "5000",
     inputLabel: "Timeout (ms)",
     inputPlaceholder: "Enter timeout in ms",
+    eventType: "api_timeout",
   },
   {
     id: "db-error",
     title: "Database Connection Error",
     description: "Test database connection failure",
     icon: <Database className="h-5 w-5" />,
-    errorCode: "DB_CONNECTION_FAILED",
-    endpoint: "POST /v1/products/create",
+    errorCode: "DB_500",
+    endpoint: "POST /v2/products/create",
     defaultValue: "invalid-connection-string",
     correctValue: "postgresql://localhost:5432",
     inputLabel: "DB Connection",
     inputPlaceholder: "Enter connection string",
+    eventType: "database_error",
   },
   {
     id: "ssl-error",
     title: "SSL Certificate Error",
     description: "Test invalid SSL certificate",
     icon: <Shield className="h-5 w-5" />,
-    errorCode: "SSL_CERT_INVALID",
-    endpoint: "POST /v1/payments/process",
+    errorCode: "SSL_ERR",
+    endpoint: "POST /v2/payments/process",
     defaultValue: "expired-cert",
     correctValue: "valid-cert",
     inputLabel: "Certificate",
     inputPlaceholder: "Enter cert status",
+    eventType: "ssl_error",
   },
   {
     id: "payload-error",
     title: "Invalid JSON Payload",
     description: "Test malformed request body",
     icon: <Server className="h-5 w-5" />,
-    errorCode: "INVALID_JSON_PAYLOAD",
-    endpoint: "POST /v1/checkout/create",
+    errorCode: "PARSE_400",
+    endpoint: "POST /v2/checkout/create",
     defaultValue: '{"items": [invalid]}',
     correctValue: '{"items": []}',
     inputLabel: "Payload",
     inputPlaceholder: "Enter JSON payload",
+    eventType: "payload_error",
   },
 ];
 
@@ -205,29 +214,28 @@ export default function TestingStudioPage() {
       setLoadingTests((prev) => ({ ...prev, [card.id]: true }));
 
       const timestamp = new Date().toISOString();
-      const alertId = generateId("ALT");
-      const traceId = generateId("trace");
       const merchantId = `MERCH-${Math.floor(Math.random() * 1000)
         .toString()
         .padStart(3, "0")}`;
 
-      // webhook payload
+      // new webhook payload format
       const webhookPayload = {
-        event_type: "system_alert",
-        alert_id: alertId,
+        event_type: card.eventType,
+        severity: isError ? "medium" : "low",
         timestamp,
-        source: "testing-studio",
-        severity: isError ? "critical" : "low",
+        merchant_id: merchantId,
+        email: "merchant@example.com",
+        service_source: "api_gateway",
+        error_code: isError ? card.errorCode : "SUCCESS",
         payload: {
-          merchant_id: merchantId,
-          error_code: isError ? card.errorCode : "SUCCESS",
+          description: isError
+            ? `${card.title}. Expected "${card.correctValue}" but received "${inputValue}".`
+            : `Test passed for ${card.title}`,
           endpoint: card.endpoint,
-          latency_ms: Math.floor(Math.random() * 200) + 20,
-          failure_count_last_5min: isError ? Math.floor(Math.random() * 200) + 50 : 0,
+          client_ip: "192.168.1." + Math.floor(Math.random() * 255),
           test_input: inputValue,
           expected_value: card.correctValue,
         },
-        trace_id: traceId,
       };
 
       // local log
@@ -236,11 +244,11 @@ export default function TestingStudioPage() {
         timestamp,
         event_type: isError ? card.errorCode : "TEST_SUCCESS",
         source: card.title,
-        severity: isError ? "critical" : "low",
+        severity: isError ? "medium" : "low",
         message: isError
           ? `${card.errorCode}: Expected "${card.correctValue}" but got "${inputValue}"`
           : `Test passed: ${card.title}`,
-        trace_id: traceId,
+        trace_id: merchantId,
       };
 
       addLog(logEntry);
@@ -262,8 +270,8 @@ export default function TestingStudioPage() {
             event_type: "WEBHOOK_DELIVERED",
             source: "webhook-service",
             severity: "low",
-            message: `Webhook delivered to n8n workflow - Alert ID: ${alertId}`,
-            trace_id: traceId,
+            message: `Webhook delivered to n8n workflow - Merchant: ${merchantId}`,
+            trace_id: merchantId,
           });
         } else {
           toast.error("Webhook delivery failed");
@@ -274,7 +282,7 @@ export default function TestingStudioPage() {
             source: "webhook-service",
             severity: "high",
             message: `Webhook delivery failed with status ${response.status}`,
-            trace_id: traceId,
+            trace_id: merchantId,
           });
         }
       } catch (error) {
@@ -286,7 +294,7 @@ export default function TestingStudioPage() {
           source: "webhook-service",
           severity: "critical",
           message: `Webhook error: ${error instanceof Error ? error.message : "Unknown error"}`,
-          trace_id: traceId,
+          trace_id: merchantId,
         });
       } finally {
         setLoadingTests((prev) => ({ ...prev, [card.id]: false }));
@@ -397,7 +405,7 @@ export default function TestingStudioPage() {
                     </span>{" "}
                     <span className="text-muted-foreground">{log.message}</span>
                     <span className="text-muted-foreground ml-2 opacity-60">
-                      trace={log.trace_id.slice(0, 12)}...
+                      merchant={log.trace_id}
                     </span>
                   </span>
                 </div>
