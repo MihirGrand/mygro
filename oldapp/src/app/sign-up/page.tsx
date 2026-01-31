@@ -7,7 +7,7 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { toast } from "sonner";
-import useUser, { setUser } from "~/hooks/useUser";
+import useUser, { setUser, setToken } from "~/hooks/useUser";
 import { signUp } from "~/lib/api/client";
 
 export default function SignUpPage() {
@@ -16,6 +16,7 @@ export default function SignUpPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -29,6 +30,11 @@ export default function SignUpPage() {
 
     if (!name.trim() || !email.trim() || !password.trim()) {
       toast.error("Please fill in all fields");
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
       return;
     }
 
@@ -50,8 +56,10 @@ export default function SignUpPage() {
         id: userData.id,
         email: userData.email,
         name: userData.name,
+        role: userData.role,
         createdAt: userData.createdAt,
       });
+      setToken(userData.token);
 
       toast.success("Account created successfully");
       router.replace("/");
@@ -81,7 +89,7 @@ export default function SignUpPage() {
         <div className="mb-6 text-center">
           <h2 className="text-xl font-semibold">Create an account</h2>
           <p className="text-muted-foreground mt-1 text-sm">
-            Get started with your account
+            Set up your account to start monitoring
           </p>
         </div>
 
@@ -125,6 +133,19 @@ export default function SignUpPage() {
             />
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirm Password</Label>
+            <Input
+              id="confirmPassword"
+              type="password"
+              placeholder="••••••••"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              disabled={loading}
+              autoComplete="new-password"
+            />
+          </div>
+
           <Button type="submit" className="w-full" disabled={loading}>
             {loading ? "Creating account..." : "Create Account"}
           </Button>
@@ -139,6 +160,10 @@ export default function SignUpPage() {
           </p>
         </div>
       </Card>
+
+      <p className="text-muted-foreground mt-8 text-center text-xs">
+        By signing up, you agree to our Terms of Service and Privacy Policy
+      </p>
     </div>
   );
 }

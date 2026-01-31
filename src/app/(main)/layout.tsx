@@ -1,24 +1,36 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
+import SideNav from "~/components/sidebar/SideNav";
 import useUser from "~/hooks/useUser";
+import { Button } from "~/components/ui/button";
+import { Menu } from "lucide-react";
+import { NavItems } from "~/components/sidebar/config";
+import { cn } from "~/lib/utils";
 
 export default function MainLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isLoading, isAuthenticated, signOut } = useUser();
+  const { user, isLoading: isLoadingUser, isAuthenticated } = useUser();
   const router = useRouter();
+  const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    if (!isLoadingUser && !isAuthenticated) {
       router.push("/sign-in");
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [isLoadingUser, isAuthenticated, router]);
 
-  if (isLoading) {
+  useEffect(() => {
+    setMobileMenuOpen(false);
+  }, [pathname]);
+
+  if (isLoadingUser) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-muted-foreground">Loading...</div>
@@ -30,23 +42,65 @@ export default function MainLayout({
     return null;
   }
 
+  const navItems = NavItems(pathname);
+
   return (
-    <div className="min-h-screen">
-      <header className="border-b">
-        <div className="flex h-14 items-center justify-between px-6">
-          <h1 className="text-lg font-semibold">MyGro</h1>
-          <div className="flex items-center gap-4">
-            <span className="text-muted-foreground text-sm">{user.name}</span>
-            <button
-              onClick={signOut}
-              className="text-muted-foreground hover:text-foreground text-sm"
+    <div
+      suppressHydrationWarning
+      className="relative flex h-screen w-full overflow-y-hidden"
+    >
+      <div className="sticky top-0 hidden h-screen md:block">
+        <SideNav />
+      </div>
+
+      <div className="flex w-full flex-col">
+        {/* mobile header */}
+        <div className="flex items-center justify-between gap-2 border-b px-4 py-2 md:hidden">
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="shrink-0"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
-              Sign out
-            </button>
+              <Menu className="h-5 w-5" />
+              <span className="sr-only">Toggle menu</span>
+            </Button>
+            <span className="text-primary font-bold">Mygro </span>
           </div>
         </div>
-      </header>
-      <main>{children}</main>
+
+        {/* mobile menu dropdown */}
+        {mobileMenuOpen && (
+          <div className="border-b bg-card p-4 md:hidden">
+            <nav className="space-y-1">
+              {navItems.map((item) => {
+                const isActive = item.active;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                    )}
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    {item.icon}
+                    {item.name}
+                  </Link>
+                );
+              })}
+            </nav>
+          </div>
+        )}
+
+        <div className="scrollbar h-full flex-1 overflow-y-auto">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }

@@ -2,17 +2,29 @@
 
 import { Card } from "~/components/ui/card";
 import useUser from "~/hooks/useUser";
+import { Ticket, Bot, MessageSquare, Clock } from "lucide-react";
 
-export default function DashboardPage() {
+export default function MyTicketsPage() {
   const { user } = useUser();
 
   return (
-    <div className="p-6">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold"></h1>
-        <p className="text-muted-foreground">Welcome back, {user?.name}</p>
+    <div className="flex h-full">
+      {/* main content */}
+      <div className="flex-1 p-6">
+
       </div>
 
+      {/* agent panel */}
+      <div className="hidden w-[28rem] border-l lg:block">
+        <div className="p-4">
+          <div className="mb-4 flex items-center gap-2">
+            <h2 className="font-semibold">Agent </h2>
+          </div>
+
+
+
+        </div>
+      </div>
     </div>
   );
 }

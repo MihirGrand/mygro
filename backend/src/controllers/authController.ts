@@ -4,7 +4,6 @@ import prisma from "../config/database.js";
 import ApiResponse from "../utils/apiResponse.js";
 import { signUpSchema, signInSchema } from "../schemas/authSchema.js";
 
-// signup
 export const signUp = async (req: Request, res: Response) => {
   try {
     const result = signUpSchema.safeParse(req.body);

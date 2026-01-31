@@ -7,13 +7,12 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Label } from "~/components/ui/label";
 import { toast } from "sonner";
-import useUser, { setUser } from "~/hooks/useUser";
-import { signUp } from "~/lib/api/client";
+import useUser, { setUser, setToken } from "~/hooks/useUser";
+import { signIn } from "~/lib/api/client";
 
-export default function SignUpPage() {
+export default function SignInPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading } = useUser();
-  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,24 +23,18 @@ export default function SignUpPage() {
     }
   }, [isAuthenticated, isLoading, router]);
 
-  const handleSignUp = async (e: React.FormEvent) => {
+  const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name.trim() || !email.trim() || !password.trim()) {
-      toast.error("Please fill in all fields");
-      return;
-    }
-
-    if (password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    if (!email.trim() || !password.trim()) {
+      toast.error("Please enter email and password");
       return;
     }
 
     setLoading(true);
 
     try {
-      const userData = await signUp({
-        name: name.trim(),
+      const userData = await signIn({
         email: email.trim().toLowerCase(),
         password: password,
       });
@@ -50,14 +43,16 @@ export default function SignUpPage() {
         id: userData.id,
         email: userData.email,
         name: userData.name,
+        role: userData.role,
         createdAt: userData.createdAt,
       });
+      setToken(userData.token);
 
-      toast.success("Account created successfully");
+      toast.success("Signed in successfully");
       router.replace("/");
     } catch (error: any) {
-      console.error("sign up error:", error);
-      toast.error(error.message || "Failed to create account");
+      console.error("sign in error:", error);
+      toast.error(error.message || "Invalid email or password");
     } finally {
       setLoading(false);
     }
@@ -79,26 +74,13 @@ export default function SignUpPage() {
     <div className="bg-background flex min-h-screen flex-col items-center justify-center p-4">
       <Card className="w-full max-w-md p-6">
         <div className="mb-6 text-center">
-          <h2 className="text-xl font-semibold">Create an account</h2>
+          <h2 className="text-xl font-semibold">Welcome back</h2>
           <p className="text-muted-foreground mt-1 text-sm">
-            Get started with your account
+            Sign in to your account
           </p>
         </div>
 
-        <form onSubmit={handleSignUp} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Full Name</Label>
-            <Input
-              id="name"
-              type="text"
-              placeholder="Enter your name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              disabled={loading}
-              autoComplete="name"
-            />
-          </div>
-
+        <form onSubmit={handleSignIn} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Email</Label>
             <Input
@@ -121,24 +103,28 @@ export default function SignUpPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
-              autoComplete="new-password"
+              autoComplete="current-password"
             />
           </div>
 
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creating account..." : "Create Account"}
+            {loading ? "Signing in..." : "Sign In"}
           </Button>
         </form>
 
         <div className="mt-6 text-center">
           <p className="text-muted-foreground text-sm">
-            Already have an account?{" "}
-            <a href="/sign-in" className="text-primary hover:underline">
-              Sign in
+            Don't have an account?{" "}
+            <a href="/sign-up" className="text-primary hover:underline">
+              Sign up
             </a>
           </p>
         </div>
       </Card>
+
+      <p className="text-muted-foreground mt-8 text-center text-xs">
+        Parental Control Dashboard
+      </p>
     </div>
   );
 }
