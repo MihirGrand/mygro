@@ -26,6 +26,9 @@ export const config = {
       resolve: (ticketId: string) =>
         `${API_BASE_URL}/api/admin/tickets/${ticketId}/resolve`,
     },
+
+    // logs endpoints
+    logs: `${API_BASE_URL}/api/logs`,
   },
 
   // action webhooks (will be handled by express backend)

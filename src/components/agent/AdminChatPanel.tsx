@@ -3,15 +3,12 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
-  MessageCircle,
   Send,
   Loader2,
   CheckCircle2,
   UserCircle,
   RotateCcw,
   Clock,
-  Sparkles,
-  RefreshCw,
 } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
@@ -98,35 +95,6 @@ function ChatBubble({ message }: { message: TicketHistoryItem }) {
   );
 }
 
-// quick action button
-function QuickActionButton({
-  label,
-  onClick,
-  icon: Icon,
-  variant = "default",
-}: {
-  label: string;
-  onClick: () => void;
-  icon?: React.ElementType;
-  variant?: "default" | "primary";
-}) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={onClick}
-      className={cn(
-        "h-auto py-2 px-3 text-xs whitespace-normal text-left justify-start gap-2",
-        variant === "primary" &&
-          "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20"
-      )}
-    >
-      {Icon && <Icon className="h-3.5 w-3.5 shrink-0" />}
-      <span>{label}</span>
-    </Button>
-  );
-}
-
 // generate suggestions using gemini
 async function generateSuggestions(
   messages: TicketHistoryItem[]
@@ -138,7 +106,7 @@ async function generateSuggestions(
     .map((m) => `${m.role === "user" ? "Customer" : "Support"}: ${m.content}`)
     .join("\n");
 
-  const prompt = `You are a customer support assistant. Based on the following conversation, suggest 3 brief follow-up responses that a human support agent could send. Each suggestion should be helpful, professional, and actionable. Keep each suggestion under 100 characters.
+  const prompt = `You are a customer support assistant. Based on the following conversation, suggest 3 brief follow-up responses that a human support agent could send. Each suggestion should be helpful, professional, and actionable. Keep each suggestion under 50 characters.
 
 Conversation:
 ${chatContext}
@@ -148,7 +116,7 @@ Return ONLY a JSON array of 3 strings, no other text. Example format:
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -203,17 +171,48 @@ export function AdminChatPanel({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
+  const lastMessageCountRef = useRef<number>(0);
 
   // load messages when ticket changes
   useEffect(() => {
     if (selectedTicket) {
       setMessages(selectedTicket.chat_history || []);
       setSuggestions([]);
+      lastMessageCountRef.current = selectedTicket.chat_history?.length || 0;
     } else {
       setMessages([]);
       setSuggestions([]);
+      lastMessageCountRef.current = 0;
     }
   }, [selectedTicket]);
+
+  // auto-generate suggestions when messages change
+  useEffect(() => {
+    if (
+      messages.length > 0 &&
+      messages.length !== lastMessageCountRef.current &&
+      selectedTicket?.is_escalated &&
+      selectedTicket?.status !== "resolved"
+    ) {
+      lastMessageCountRef.current = messages.length;
+
+      // only generate if last message is from user
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage?.role === "user") {
+        setIsLoadingSuggestions(true);
+        generateSuggestions(messages)
+          .then((newSuggestions) => {
+            setSuggestions(newSuggestions);
+          })
+          .catch(() => {
+            setSuggestions([]);
+          })
+          .finally(() => {
+            setIsLoadingSuggestions(false);
+          });
+      }
+    }
+  }, [messages, selectedTicket]);
 
   // scroll to bottom on new messages
   useEffect(() => {
@@ -287,10 +286,10 @@ export function AdminChatPanel({
 
     setIsResolving(true);
 
-    // optimistic update - add resolution message immediately
+    // optimistic update
     const resolutionMessage: TicketHistoryItem = {
       role: "assistant",
-      content: "This ticket has been marked as resolved by the support agent. If you need further assistance, please feel free to start a new conversation.",
+      content: "This ticket has been marked as resolved. Feel free to start a new conversation if you need help.",
       timestamp: new Date().toISOString(),
       is_human: true,
     };
@@ -303,7 +302,6 @@ export function AdminChatPanel({
     } catch (error) {
       console.error("Failed to resolve ticket:", error);
       toast.error("Failed to resolve ticket");
-      // revert optimistic update
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsResolving(false);
@@ -315,9 +313,8 @@ export function AdminChatPanel({
 
     setIsReopening(true);
 
-    const reopenMessage = "I'm reopening this ticket to provide further assistance. How can I help you?";
+    const reopenMessage = "I'm reopening this ticket. How can I help you?";
 
-    // optimistic update - add reopen message immediately
     const optimisticMessage: TicketHistoryItem = {
       role: "assistant",
       content: reopenMessage,
@@ -333,27 +330,11 @@ export function AdminChatPanel({
     } catch (error) {
       console.error("Failed to reopen ticket:", error);
       toast.error("Failed to reopen ticket");
-      // revert optimistic update
       setMessages((prev) => prev.slice(0, -1));
     } finally {
       setIsReopening(false);
     }
   }, [selectedTicket, isReopening, onTicketUpdated]);
-
-  const handleGenerateSuggestions = useCallback(async () => {
-    if (messages.length === 0 || isLoadingSuggestions) return;
-
-    setIsLoadingSuggestions(true);
-    try {
-      const newSuggestions = await generateSuggestions(messages);
-      setSuggestions(newSuggestions);
-    } catch (error) {
-      console.error("Failed to generate suggestions:", error);
-      toast.error("Failed to generate suggestions");
-    } finally {
-      setIsLoadingSuggestions(false);
-    }
-  }, [messages, isLoadingSuggestions]);
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -362,121 +343,71 @@ export function AdminChatPanel({
     }
   };
 
-  const handleQuickAction = (text: string) => {
-    setInputValue(text);
+  const handleSuggestionClick = (text: string) => {
+    handleSendMessage(text);
   };
 
   const isResolved = selectedTicket?.status === "resolved";
 
-  // empty state when no ticket selected
   if (!selectedTicket) {
     return (
-      <div className="bg-background flex h-full w-full flex-col">
-        <div className="border-border/40 flex h-14 shrink-0 items-center justify-between border-b px-4">
-          <div className="flex items-center gap-2">
-            <div className="bg-muted flex h-8 w-8 items-center justify-center rounded-lg">
-              <MessageCircle className="text-foreground h-4 w-4" />
-            </div>
-            <div>
-              <h1 className="text-foreground text-sm font-medium">Chat</h1>
-              <p className="text-muted-foreground text-xs">Select a ticket</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <div className="bg-muted/50 mx-auto flex h-12 w-12 items-center justify-center rounded-full">
-              <MessageCircle className="text-muted-foreground h-6 w-6" />
-            </div>
-            <p className="text-muted-foreground mt-3 text-sm">
-              Select a ticket to view conversation
-            </p>
-          </div>
-        </div>
+      <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+        <p className="text-sm">Select a ticket to view the conversation</p>
       </div>
     );
   }
 
   return (
-    <div className="bg-background flex h-full w-full flex-col">
+    <div className="flex flex-col h-full">
       {/* header */}
-      <div className="border-border/40 flex h-14 shrink-0 items-center justify-between border-b px-4">
-        <div className="flex items-center gap-2">
-          <div className="bg-primary/10 flex h-8 w-8 items-center justify-center rounded-lg">
-            <UserCircle className="text-primary h-4 w-4" />
-          </div>
+      <div className="border-border/40 flex items-center justify-between border-b px-4 py-3">
+        <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-foreground text-sm font-medium">
-              {selectedTicket.ticket_id}
-            </h1>
+            <h3 className="text-sm font-medium">
+              Ticket #{selectedTicket.ticket_id?.slice(-6) || selectedTicket._id?.slice(-6)}
+            </h3>
             <p className="text-muted-foreground text-xs">
-              {selectedTicket.merchant?.name || "User"}
+              {isResolved ? "Resolved" : "Active conversation"}
             </p>
           </div>
         </div>
-
-        {selectedTicket.is_escalated && !isResolved && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleResolve}
-            disabled={isResolving}
-            className="gap-1.5 border-emerald-500/50 text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600"
-          >
-            {isResolving ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-3.5 w-3.5" />
-            )}
-            Resolve
-          </Button>
-        )}
-      </div>
-
-      {/* user info banner */}
-      {selectedTicket.merchant && (
-        <div className="bg-muted/30 border-border/40 border-b px-4 py-2">
-          <p className="text-muted-foreground text-xs">
-            Chatting with{" "}
-            <span className="text-foreground font-medium">
-              {selectedTicket.merchant.name}
-            </span>{" "}
-            ({selectedTicket.merchant.email})
-          </p>
-        </div>
-      )}
-
-      {/* resolved banner */}
-      {isResolved && (
-        <div className="bg-emerald-500/10 border-emerald-500/20 border-b px-4 py-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
-              <span className="text-emerald-600 text-sm font-medium">
-                This ticket has been resolved
-              </span>
-            </div>
+        <div className="flex items-center gap-2">
+          {isResolved ? (
             <Button
-              variant="outline"
               size="sm"
+              variant="ghost"
               onClick={handleReopen}
               disabled={isReopening}
-              className="gap-1.5 h-7 text-xs"
+              className="text-xs text-primary/70 hover:text-primary hover:bg-primary/10"
             >
               {isReopening ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
               ) : (
-                <RotateCcw className="h-3 w-3" />
+                <RotateCcw className="mr-1 h-3 w-3" />
               )}
               Reopen
             </Button>
-          </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={handleResolve}
+              disabled={isResolving}
+              className="text-xs text-emerald-600/70 hover:text-emerald-600 hover:bg-emerald-600/10"
+            >
+              {isResolving ? (
+                <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+              ) : (
+                <CheckCircle2 className="mr-1 h-3 w-3" />
+              )}
+              Resolve
+            </Button>
+          )}
         </div>
-      )}
+      </div>
 
-      {/* chat area */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
+      {/* messages */}
+      <ScrollArea ref={scrollRef} className="flex-1">
         <div className="flex flex-col gap-4 p-4">
           {messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-8">
@@ -495,54 +426,45 @@ export function AdminChatPanel({
         </div>
       </ScrollArea>
 
-      {/* quick actions and suggestions */}
-      {!isResolved && selectedTicket.is_escalated && (
+      {/* suggestions */}
+      {!isResolved && selectedTicket.is_escalated && (suggestions.length > 0 || isLoadingSuggestions) && (
         <div className="border-border/40 border-t px-3 py-2">
-          <div className="flex flex-wrap gap-2">
-            {/* default quick actions */}
-            <QuickActionButton
-              label="Allow me some time to review your case"
-              icon={Clock}
-              onClick={() =>
-                handleQuickAction(
-                  "Thank you for your patience. Allow me some time to go through your conversation history and I'll get back to you with a solution shortly."
-                )
-              }
-            />
-
-            {/* generate suggestions button */}
-            <QuickActionButton
-              label={
-                isLoadingSuggestions ? "Analyzing..." : "Suggest responses"
-              }
-              icon={isLoadingSuggestions ? RefreshCw : Sparkles}
-              variant="primary"
-              onClick={handleGenerateSuggestions}
-            />
-          </div>
-
-          {/* ai suggestions */}
-          {suggestions.length > 0 && (
-            <div className="mt-2 space-y-1">
-              <p className="text-muted-foreground text-[10px] uppercase tracking-wider">
-                Suggested responses
-              </p>
-              <div className="flex flex-col gap-1.5">
-                {suggestions.map((suggestion, index) => (
-                  <motion.button
-                    key={index}
-                    initial={{ opacity: 0, y: 4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.1 }}
-                    onClick={() => handleQuickAction(suggestion)}
-                    className="text-left text-xs p-2 rounded-lg bg-primary/5 border border-primary/20 text-foreground hover:bg-primary/10 transition-colors"
-                  >
-                    {suggestion}
-                  </motion.button>
-                ))}
-              </div>
+          {isLoadingSuggestions ? (
+            <div className="flex items-center gap-2 text-muted-foreground text-xs">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>Generating suggestions...</span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {suggestions.map((suggestion, index) => (
+                <motion.button
+                  key={index}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: index * 0.05 }}
+                  onClick={() => handleSuggestionClick(suggestion)}
+                  className="text-xs px-2.5 py-1.5 rounded-full bg-primary/5 text-primary/80 hover:bg-primary/10 hover:text-primary transition-colors border border-primary/10"
+                >
+                  {suggestion}
+                </motion.button>
+              ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* quick actions */}
+      {!isResolved && selectedTicket.is_escalated && suggestions.length === 0 && !isLoadingSuggestions && (
+        <div className="border-border/40 border-t px-3 py-2">
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => handleSendMessage("Let me review your case and get back to you shortly.")}
+              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+            >
+              <Clock className="h-3 w-3" />
+              Need time to review
+            </button>
+          </div>
         </div>
       )}
 

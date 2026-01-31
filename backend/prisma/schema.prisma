@@ -83,3 +83,19 @@ enum UserRole {
   user
   admin
 }
+
+model Log {
+  id        String   @id @default(auto()) @map("_id") @db.ObjectId
+  logId     String   @unique
+  timestamp DateTime @default(now())
+  eventType String
+  source    String
+  severity  String
+  message   String
+  traceId   String?
+  createdAt DateTime @default(now())
+
+  @@index([timestamp])
+  @@index([eventType])
+  @@map("logs")
+}

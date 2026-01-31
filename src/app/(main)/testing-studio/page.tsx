@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Activity,
   Terminal,
@@ -14,12 +14,11 @@ import {
   Server,
   Database,
   Wifi,
+  Loader2,
 } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
-import { Card } from "~/components/ui/card";
 import { Input } from "~/components/ui/input";
-import { Label } from "~/components/ui/label";
 import { cn } from "~/lib/utils";
 import { toast } from "sonner";
 
@@ -48,6 +47,7 @@ interface TestCard {
   eventType: string;
 }
 
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 const WEBHOOK_URL =
   "https://abstruse.app.n8n.cloud/webhook-test/system-signal";
 
@@ -56,8 +56,8 @@ const TEST_CARDS: TestCard[] = [
   {
     id: "api-token",
     title: "API Token Mismatch",
-    description: "Test invalid API key authentication",
-    icon: <Key className="h-5 w-5" />,
+    description: "Invalid API key auth",
+    icon: <Key className="h-4 w-4" />,
     errorCode: "AUTH_401",
     endpoint: "GET /v2/products",
     defaultValue: "sk_test_invalid_token",
@@ -69,8 +69,8 @@ const TEST_CARDS: TestCard[] = [
   {
     id: "cors",
     title: "CORS Error",
-    description: "Simulate cross-origin request failure",
-    icon: <Shield className="h-5 w-5" />,
+    description: "Cross-origin failure",
+    icon: <Shield className="h-4 w-4" />,
     errorCode: "CORS_403",
     endpoint: "OPTIONS /v2/checkout",
     defaultValue: "http://malicious-site.com",
@@ -82,8 +82,8 @@ const TEST_CARDS: TestCard[] = [
   {
     id: "rate-limit",
     title: "Rate Limit Error",
-    description: "Test API rate limiting (429)",
-    icon: <Zap className="h-5 w-5" />,
+    description: "API rate limiting (429)",
+    icon: <Zap className="h-4 w-4" />,
     errorCode: "RATE_429",
     endpoint: "POST /v2/orders/bulk",
     defaultValue: "1500",
@@ -94,9 +94,9 @@ const TEST_CARDS: TestCard[] = [
   },
   {
     id: "webhook-fail",
-    title: "Webhook Delivery Failure",
-    description: "Test failed webhook delivery",
-    icon: <Wifi className="h-5 w-5" />,
+    title: "Webhook Failure",
+    description: "Failed webhook delivery",
+    icon: <Wifi className="h-4 w-4" />,
     errorCode: "WEBHOOK_FAIL",
     endpoint: "POST /webhooks/order-created",
     defaultValue: "https://invalid-endpoint.local",
@@ -108,8 +108,8 @@ const TEST_CARDS: TestCard[] = [
   {
     id: "timeout",
     title: "API Timeout",
-    description: "Simulate slow API response",
-    icon: <Clock className="h-5 w-5" />,
+    description: "Slow API response",
+    icon: <Clock className="h-4 w-4" />,
     errorCode: "TIMEOUT_504",
     endpoint: "GET /v2/inventory/sync",
     defaultValue: "30000",
@@ -120,9 +120,9 @@ const TEST_CARDS: TestCard[] = [
   },
   {
     id: "db-error",
-    title: "Database Connection Error",
-    description: "Test database connection failure",
-    icon: <Database className="h-5 w-5" />,
+    title: "Database Error",
+    description: "DB connection failure",
+    icon: <Database className="h-4 w-4" />,
     errorCode: "DB_500",
     endpoint: "POST /v2/products/create",
     defaultValue: "invalid-connection-string",
@@ -134,8 +134,8 @@ const TEST_CARDS: TestCard[] = [
   {
     id: "ssl-error",
     title: "SSL Certificate Error",
-    description: "Test invalid SSL certificate",
-    icon: <Shield className="h-5 w-5" />,
+    description: "Invalid SSL cert",
+    icon: <Shield className="h-4 w-4" />,
     errorCode: "SSL_ERR",
     endpoint: "POST /v2/payments/process",
     defaultValue: "expired-cert",
@@ -147,8 +147,8 @@ const TEST_CARDS: TestCard[] = [
   {
     id: "payload-error",
     title: "Invalid JSON Payload",
-    description: "Test malformed request body",
-    icon: <Server className="h-5 w-5" />,
+    description: "Malformed request body",
+    icon: <Server className="h-4 w-4" />,
     errorCode: "PARSE_400",
     endpoint: "POST /v2/checkout/create",
     defaultValue: '{"items": [invalid]}',
@@ -160,17 +160,10 @@ const TEST_CARDS: TestCard[] = [
 ];
 
 const SEVERITY_COLORS = {
-  low: "text-slate-600 dark:text-slate-400",
-  medium: "text-yellow-600 dark:text-yellow-400",
-  high: "text-orange-600 dark:text-orange-400",
-  critical: "text-red-600 dark:text-red-400",
-};
-
-const SEVERITY_BG = {
-  low: "bg-slate-100 dark:bg-slate-800",
-  medium: "bg-yellow-100 dark:bg-yellow-900/30",
-  high: "bg-orange-100 dark:bg-orange-900/30",
-  critical: "bg-red-100 dark:bg-red-900/30",
+  low: "text-slate-500",
+  medium: "text-yellow-500",
+  high: "text-orange-500",
+  critical: "text-red-500",
 };
 
 // generates unique ids
@@ -197,6 +190,56 @@ export default function TestingStudioPage() {
   const [testInputs, setTestInputs] = useState<Record<string, string>>({});
   const [loadingTests, setLoadingTests] = useState<Record<string, boolean>>({});
   const [newLogIds, setNewLogIds] = useState<Set<string>>(new Set());
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(0);
+  const loaderRef = useRef<HTMLDivElement>(null);
+
+  // fetch logs from api
+  const fetchLogs = useCallback(async (pageNum: number, append = false) => {
+    try {
+      setIsLoadingMore(true);
+      const response = await fetch(
+        `${API_BASE_URL}/api/logs?page=${pageNum}&limit=50`
+      );
+      if (response.ok) {
+        const data = await response.json();
+        if (data.success && data.data) {
+          const fetchedLogs = data.data.logs || [];
+          setLogs((prev) => (append ? [...prev, ...fetchedLogs] : fetchedLogs));
+          setHasMore(data.data.hasMore || false);
+          setPage(pageNum);
+        }
+      }
+    } catch (error) {
+      console.error("Failed to fetch logs:", error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, []);
+
+  // initial load
+  useEffect(() => {
+    fetchLogs(0);
+  }, [fetchLogs]);
+
+  // infinite scroll observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          fetchLogs(page + 1, true);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loaderRef.current) {
+      observer.observe(loaderRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasMore, isLoadingMore, page, fetchLogs]);
 
   // adds log to state
   const addLog = useCallback((log: SystemLog) => {
@@ -218,7 +261,7 @@ export default function TestingStudioPage() {
         .toString()
         .padStart(3, "0")}`;
 
-      // new webhook payload format
+      // webhook payload
       const webhookPayload = {
         event_type: card.eventType,
         severity: isError ? "medium" : "low",
@@ -253,6 +296,17 @@ export default function TestingStudioPage() {
 
       addLog(logEntry);
 
+      // save to db
+      try {
+        await fetch(`${API_BASE_URL}/api/logs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(logEntry),
+        });
+      } catch (error) {
+        console.error("Failed to save log:", error);
+      }
+
       try {
         const response = await fetch(WEBHOOK_URL, {
           method: "POST",
@@ -263,31 +317,43 @@ export default function TestingStudioPage() {
         });
 
         if (response.ok) {
-          toast.success("Webhook sent successfully");
-          addLog({
+          toast.success("Webhook sent");
+          const successLog: SystemLog = {
             id: generateId("log"),
             timestamp: new Date().toISOString(),
             event_type: "WEBHOOK_DELIVERED",
             source: "webhook-service",
             severity: "low",
-            message: `Webhook delivered to n8n workflow - Merchant: ${merchantId}`,
+            message: `Webhook delivered - Merchant: ${merchantId}`,
             trace_id: merchantId,
+          };
+          addLog(successLog);
+          await fetch(`${API_BASE_URL}/api/logs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(successLog),
           });
         } else {
-          toast.error("Webhook delivery failed");
-          addLog({
+          toast.error("Webhook failed");
+          const failLog: SystemLog = {
             id: generateId("log"),
             timestamp: new Date().toISOString(),
             event_type: "WEBHOOK_FAILED",
             source: "webhook-service",
             severity: "high",
-            message: `Webhook delivery failed with status ${response.status}`,
+            message: `Webhook failed with status ${response.status}`,
             trace_id: merchantId,
+          };
+          addLog(failLog);
+          await fetch(`${API_BASE_URL}/api/logs`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(failLog),
           });
         }
       } catch (error) {
         toast.error("Failed to send webhook");
-        addLog({
+        const errorLog: SystemLog = {
           id: generateId("log"),
           timestamp: new Date().toISOString(),
           event_type: "WEBHOOK_ERROR",
@@ -295,21 +361,32 @@ export default function TestingStudioPage() {
           severity: "critical",
           message: `Webhook error: ${error instanceof Error ? error.message : "Unknown error"}`,
           trace_id: merchantId,
+        };
+        addLog(errorLog);
+        await fetch(`${API_BASE_URL}/api/logs`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(errorLog),
         });
       } finally {
         setLoadingTests((prev) => ({ ...prev, [card.id]: false }));
       }
     },
-    [testInputs, addLog],
+    [testInputs, addLog]
   );
 
-  const clearLogs = useCallback(() => {
+  const clearLogs = useCallback(async () => {
     setLogs([]);
+    try {
+      await fetch(`${API_BASE_URL}/api/logs`, { method: "DELETE" });
+    } catch (error) {
+      console.error("Failed to clear logs:", error);
+    }
   }, []);
 
   return (
     <div className="flex h-full">
-      {/* logs panel - center */}
+      {/* logs panel */}
       <div className="flex flex-1 flex-col">
         {/* header */}
         <div className="bg-background/95 supports-backdrop-filter:bg-background/60 shrink-0 border-b backdrop-blur">
@@ -335,7 +412,7 @@ export default function TestingStudioPage() {
                   onClick={() => setIsLive(!isLive)}
                   className={cn(
                     "gap-2",
-                    isLive && "bg-green-600 hover:bg-green-700",
+                    isLive && "bg-green-600 hover:bg-green-700"
                   )}
                 >
                   {isLive ? (
@@ -385,7 +462,7 @@ export default function TestingStudioPage() {
                   key={log.id}
                   className={cn(
                     "group hover:bg-muted/50 flex items-start gap-4 border-b px-4 py-2 font-mono text-sm transition-colors",
-                    newLogIds.has(log.id) && "bg-primary/5",
+                    newLogIds.has(log.id) && "bg-primary/5"
                   )}
                 >
                   <span className="text-muted-foreground w-32 shrink-0 text-xs">
@@ -394,7 +471,7 @@ export default function TestingStudioPage() {
                   <span
                     className={cn(
                       "w-44 shrink-0 text-xs font-medium uppercase",
-                      SEVERITY_COLORS[log.severity],
+                      SEVERITY_COLORS[log.severity]
                     )}
                   >
                     {log.event_type.replace(/_/g, " ")}
@@ -410,6 +487,12 @@ export default function TestingStudioPage() {
                   </span>
                 </div>
               ))}
+              {/* infinite scroll loader */}
+              <div ref={loaderRef} className="py-4 flex justify-center">
+                {isLoadingMore && (
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                )}
+              </div>
             </div>
           )}
         </ScrollArea>
@@ -431,48 +514,54 @@ export default function TestingStudioPage() {
         </div>
       </div>
 
-      {/* test cards panel - right */}
-      <div className="hidden w-96 border-l lg:block">
-        <div className="bg-background/95 border-b px-4 py-3">
+      {/* test cards panel */}
+      <div className="hidden w-80 border-l lg:block">
+        <div className="bg-background/95 border-b px-3 py-2.5">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="text-primary h-5 w-5" />
-            <h2 className="font-semibold">Error Simulators</h2>
+            <AlertTriangle className="text-primary h-4 w-4" />
+            <h2 className="text-sm font-semibold">Error Simulators</h2>
           </div>
-          <p className="text-muted-foreground mt-1 text-sm">
-             Intentional errors to test the self-healing agent
+          <p className="text-muted-foreground mt-0.5 text-xs">
+            Test the self-healing agent
           </p>
         </div>
 
         <ScrollArea className="h-[calc(100vh-80px)]">
-          <div className="space-y-4 p-4">
-            {TEST_CARDS.map((card) => (
-              <Card key={card.id} className="p-4">
-                <div className="mb-3 flex items-start gap-3">
-                  <div
-                    className={cn(
-                      "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-                      SEVERITY_BG.high,
-                    )}
-                  >
-                    <span className={SEVERITY_COLORS.high}>{card.icon}</span>
+          <div className="space-y-2 p-2">
+            {TEST_CARDS.map((card) => {
+              const isError =
+                (testInputs[card.id] ?? card.defaultValue) !== card.correctValue;
+              return (
+                <div
+                  key={card.id}
+                  className="rounded-lg border border-border/50 bg-card p-2.5"
+                >
+                  {/* card header */}
+                  <div className="flex items-start gap-2 mb-2">
+                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
+                      <span className="text-muted-foreground">{card.icon}</span>
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-xs font-medium leading-tight">
+                        {card.title}
+                      </h3>
+                      <p className="text-muted-foreground text-[10px] mt-0.5">
+                        {card.description}
+                      </p>
+                    </div>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="font-semibold">{card.title}</h3>
-                    <p className="text-muted-foreground text-sm">
-                      {card.description}
-                    </p>
+
+                  {/* correct value hint */}
+                  <div className="text-[10px] text-muted-foreground mb-1.5">
+                    Expected:{" "}
+                    <code className="bg-muted px-1 py-0.5 rounded text-[10px]">
+                      {card.correctValue.length > 20
+                        ? card.correctValue.slice(0, 20) + "..."
+                        : card.correctValue}
+                    </code>
                   </div>
-                </div>
 
-                <div className="text-muted-foreground mb-3 text-xs">
-                  <span className="font-medium">Correct value:</span>{" "}
-                  <code className="bg-muted rounded px-1">{card.correctValue}</code>
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor={card.id} className="text-sm">
-                    {card.inputLabel}
-                  </Label>
+                  {/* input */}
                   <Input
                     id={card.id}
                     placeholder={card.inputPlaceholder}
@@ -483,31 +572,33 @@ export default function TestingStudioPage() {
                         [card.id]: e.target.value,
                       }))
                     }
-                    className="font-mono text-sm"
+                    className="h-7 text-xs font-mono mb-2"
                   />
-                </div>
 
-                <Button
-                  className="mt-3 w-full"
-                  variant={
-                    (testInputs[card.id] ?? card.defaultValue) !== card.correctValue
-                      ? "destructive"
-                      : "default"
-                  }
-                  onClick={() => triggerTest(card)}
-                  disabled={loadingTests[card.id]}
-                >
-                  {loadingTests[card.id] ? (
-                    <>
-                      <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                      Testing...
-                    </>
-                  ) : (
-                    "TEST"
-                  )}
-                </Button>
-              </Card>
-            ))}
+                  {/* test button */}
+                  <button
+                    onClick={() => triggerTest(card)}
+                    disabled={loadingTests[card.id]}
+                    className={cn(
+                      "w-full h-7 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5",
+                      isError
+                        ? "bg-emerald-400/10 text-emerald-400 hover:bg-emerald-400/20"
+                        : "bg-primary/10 text-emerald-400 hover:bg-primary/20",
+                      loadingTests[card.id] && "opacity-50 cursor-not-allowed"
+                    )}
+                  >
+                    {loadingTests[card.id] ? (
+                      <>
+                        <RefreshCw className="h-3 w-3 animate-spin" />
+                        Testing...
+                      </>
+                    ) : (
+                      "Test"
+                    )}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         </ScrollArea>
       </div>
