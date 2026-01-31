@@ -14,6 +14,7 @@ export { generateId, formatTime, formatRelativeTime } from "./utils";
 
 // components
 export { AgentPanel } from "./AgentPanel";
+export { AdminChatPanel } from "./AdminChatPanel";
 export { ChatMessage } from "./ChatMessage";
 export { ChatInput } from "./ChatInput";
 export { ActionCards } from "./ActionCards";

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import type { ChatMessage, ActionCard, AgentResponse } from "./types";
 import { getUser } from "~/hooks/useUser";
 import { config } from "~/lib/config";
+import { escalateTicket, fetchChatHistory } from "~/lib/api/tickets";
 
 // generates unique id
 function generateId(prefix: string) {
@@ -19,24 +20,116 @@ const WELCOME_MESSAGE: ChatMessage = {
   timestamp: Date.now(),
 };
 
+// checks if an action card is an escalation action
+function isEscalationAction(card: ActionCard): boolean {
+  const label = (card.label || "").toLowerCase();
+  const webhookPath = (card.action_payload?.webhook_to_call || "").toLowerCase();
+  const cardId = (card.id || "").toLowerCase();
+
+  // check various patterns that indicate escalation
+  const escalationPatterns = [
+    "talk to human",
+    "contact support",
+    "human agent",
+    "speak to agent",
+    "escalate",
+    "human support",
+    "live agent",
+    "real person",
+    "talk_to_human",
+    "contact_support",
+    "escalate_to_human",
+    "talkto human",
+    "human",
+  ];
+
+  // check label
+  for (const pattern of escalationPatterns) {
+    if (label.includes(pattern) || pattern.includes(label)) {
+      console.log("[Agent] Escalation detected via label:", label);
+      return true;
+    }
+  }
+
+  // check webhook path
+  if (
+    webhookPath.includes("escalate") ||
+    webhookPath.includes("human") ||
+    webhookPath.includes("/support")
+  ) {
+    console.log("[Agent] Escalation detected via webhook:", webhookPath);
+    return true;
+  }
+
+  // check card id
+  for (const pattern of escalationPatterns) {
+    if (cardId.includes(pattern.replace(/\s/g, "_")) || cardId.includes(pattern.replace(/\s/g, ""))) {
+      console.log("[Agent] Escalation detected via card id:", cardId);
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function useAgentChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [currentTicketId, setCurrentTicketId] = useState<string | null>(null);
+  const [isEscalated, setIsEscalated] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const pollingRef = useRef<NodeJS.Timeout | null>(null);
 
   // scroll to bottom on new messages
   useEffect(() => {
     if (scrollRef.current) {
       const scrollContainer = scrollRef.current.querySelector(
-        "[data-radix-scroll-area-viewport]",
+        "[data-radix-scroll-area-viewport]"
       );
       if (scrollContainer) {
         scrollContainer.scrollTop = scrollContainer.scrollHeight;
       }
     }
   }, [messages, isLoading]);
+
+  // polling for escalated tickets
+  useEffect(() => {
+    if (isEscalated && currentTicketId) {
+      console.log("[Agent] Starting polling for escalated ticket:", currentTicketId);
+
+      const poll = async () => {
+        try {
+          const history = await fetchChatHistory(currentTicketId);
+          const loadedMessages: ChatMessage[] = history.map((item, index) => ({
+            id: `polled-${currentTicketId}-${index}`,
+            role: item.role,
+            content: item.content,
+            timestamp: new Date(item.timestamp).getTime(),
+            cards: item.cards,
+            ticketId: item.role === "assistant" ? currentTicketId : undefined,
+            toolsUsed: item.tools_used,
+            isHuman: item.is_human,
+          }));
+
+          if (loadedMessages.length > 0) {
+            setMessages(loadedMessages);
+          }
+        } catch (error) {
+          console.error("[Agent] Polling error:", error);
+        }
+      };
+
+      // poll every 2 seconds
+      pollingRef.current = setInterval(poll, 2000);
+
+      return () => {
+        if (pollingRef.current) {
+          clearInterval(pollingRef.current);
+        }
+      };
+    }
+  }, [isEscalated, currentTicketId]);
 
   // send message to agent via express backend
   const sendMessage = useCallback(async () => {
@@ -69,6 +162,8 @@ export function useAgentChat() {
         },
       };
 
+      console.log("[Agent] Sending message:", payload);
+
       // send to express backend
       const response = await fetch(config.api.agent, {
         method: "POST",
@@ -77,29 +172,43 @@ export function useAgentChat() {
       });
 
       const responseData = await response.json();
+      console.log("[Agent] Response:", responseData);
 
       // extract data from api response wrapper
-      const data: AgentResponse & { success?: boolean; error?: string; tools_used?: string[] } =
-        responseData.data || responseData;
+      const data: AgentResponse & {
+        success?: boolean;
+        error?: string;
+        tools_used?: string[];
+        is_escalated?: boolean;
+      } = responseData.data || responseData;
 
       // store ticket id for subsequent messages
       if (data.ticket_id && !currentTicketId) {
+        console.log("[Agent] Setting ticket id:", data.ticket_id);
         setCurrentTicketId(data.ticket_id);
       }
 
-      const assistantMessage: ChatMessage = {
-        id: generateId("msg"),
-        role: "assistant",
-        content: data.agent_message,
-        timestamp: Date.now(),
-        cards: data.cards || [],
-        ticketId: data.ticket_id,
-        toolsUsed: data.tools_used || [],
-      };
+      // check if ticket is escalated (no ai response)
+      if (data.is_escalated) {
+        console.log("[Agent] Ticket is escalated, enabling polling");
+        setIsEscalated(true);
+        // no assistant message to add when escalated
+      } else if (data.agent_message) {
+        const assistantMessage: ChatMessage = {
+          id: generateId("msg"),
+          role: "assistant",
+          content: data.agent_message,
+          timestamp: Date.now(),
+          cards: data.cards || [],
+          ticketId: data.ticket_id,
+          toolsUsed: data.tools_used || [],
+          isHuman: false,
+        };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+        setMessages((prev) => [...prev, assistantMessage]);
+      }
     } catch (error) {
-      console.error("Error sending message:", error);
+      console.error("[Agent] Error sending message:", error);
 
       const errorMessage: ChatMessage = {
         id: generateId("msg"),
@@ -119,39 +228,119 @@ export function useAgentChat() {
   }, [inputValue, isLoading, currentTicketId]);
 
   // handle action button click
-  const handleActionClick = useCallback((card: ActionCard) => {
-    if (card.type === "link" && card.url) {
-      window.open(card.url, "_blank");
-      return;
-    }
+  const handleActionClick = useCallback(
+    async (card: ActionCard) => {
+      console.log("[Agent] Action clicked:", card);
 
-    if (card.action_payload) {
-      toast.success(`Action "${card.label}" triggered`, {
-        description: `Executing: ${card.action_payload.webhook_to_call}`,
-      });
+      // handle link type
+      if (card.type === "link" && card.url) {
+        window.open(card.url, "_blank");
+        return;
+      }
 
-      // TODO: implement actual action execution via express backend
-      const actionMessage: ChatMessage = {
-        id: generateId("msg"),
-        role: "assistant",
-        content: `✓ Action "${card.label}" has been executed successfully.`,
-        timestamp: Date.now(),
-      };
+      // check if this is an escalation action
+      if (isEscalationAction(card)) {
+        console.log("[Agent] Escalation action detected, currentTicketId:", currentTicketId);
 
-      setMessages((prev) => [...prev, actionMessage]);
-    }
-  }, []);
+        if (!currentTicketId) {
+          toast.error("No active conversation to escalate");
+          return;
+        }
+
+        setIsLoading(true);
+
+        try {
+          console.log("[Agent] Calling escalateTicket API for:", currentTicketId);
+          const result = await escalateTicket(currentTicketId);
+          console.log("[Agent] Escalation result:", result);
+
+          // add system message
+          const systemMessage: ChatMessage = {
+            id: generateId("msg"),
+            role: "assistant",
+            content: result.system_message || "You've been connected to a human agent. They will respond to you shortly.",
+            timestamp: Date.now(),
+            isHuman: true,
+          };
+
+          setMessages((prev) => [...prev, systemMessage]);
+          setIsEscalated(true);
+
+          toast.success("Connected to human support", {
+            description: "A support agent will respond shortly.",
+          });
+        } catch (error) {
+          console.error("[Agent] Failed to escalate:", error);
+          toast.error("Failed to connect to human support");
+
+          // add error message
+          const errorMessage: ChatMessage = {
+            id: generateId("msg"),
+            role: "assistant",
+            content:
+              "Sorry, I couldn't connect you to a human agent right now. Please try again in a moment.",
+            timestamp: Date.now(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        } finally {
+          setIsLoading(false);
+        }
+        return;
+      }
+
+      // handle other action payloads (non-escalation)
+      if (card.action_payload) {
+        console.log("[Agent] Non-escalation action, payload:", card.action_payload);
+
+        toast.info(`Action "${card.label}" triggered`, {
+          description: "Processing your request...",
+        });
+
+        // for now, show a generic success message for other actions
+        const actionMessage: ChatMessage = {
+          id: generateId("msg"),
+          role: "assistant",
+          content: `I've processed your request for "${card.label}". Is there anything else I can help you with?`,
+          timestamp: Date.now(),
+        };
+
+        setMessages((prev) => [...prev, actionMessage]);
+      }
+    },
+    [currentTicketId]
+  );
 
   // start new conversation
   const startNewConversation = useCallback(() => {
+    console.log("[Agent] Starting new conversation");
+
+    // stop polling
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
     setMessages([WELCOME_MESSAGE]);
     setInputValue("");
     setCurrentTicketId(null);
+    setIsEscalated(false);
   }, []);
 
   // load existing ticket conversation
   const loadTicketConversation = useCallback(
-    (ticketId: string, chatHistory: Array<{ role: "user" | "assistant"; content: string; timestamp: string; cards?: ActionCard[]; tools_used?: string[] }>) => {
+    (
+      ticketId: string,
+      chatHistory: Array<{
+        role: "user" | "assistant";
+        content: string;
+        timestamp: string;
+        cards?: ActionCard[];
+        tools_used?: string[];
+        is_human?: boolean;
+      }>,
+      ticketIsEscalated?: boolean
+    ) => {
+      console.log("[Agent] Loading ticket conversation:", ticketId, "escalated:", ticketIsEscalated);
+
       const loadedMessages: ChatMessage[] = chatHistory.map((item, index) => ({
         id: `loaded-${ticketId}-${index}`,
         role: item.role,
@@ -160,12 +349,16 @@ export function useAgentChat() {
         cards: item.cards,
         ticketId: item.role === "assistant" ? ticketId : undefined,
         toolsUsed: item.tools_used,
+        isHuman: item.is_human,
       }));
 
-      setMessages(loadedMessages.length > 0 ? loadedMessages : [WELCOME_MESSAGE]);
+      setMessages(
+        loadedMessages.length > 0 ? loadedMessages : [WELCOME_MESSAGE]
+      );
       setCurrentTicketId(ticketId);
+      setIsEscalated(ticketIsEscalated || false);
     },
-    [],
+    []
   );
 
   return {
@@ -175,6 +368,7 @@ export function useAgentChat() {
     isLoading,
     scrollRef,
     currentTicketId,
+    isEscalated,
     sendMessage,
     handleActionClick,
     startNewConversation,

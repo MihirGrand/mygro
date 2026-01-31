@@ -9,19 +9,20 @@ import useUser, { setUser } from "~/hooks/useUser";
 import { signIn } from "~/lib/api/client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { User, UserCircle } from "lucide-react";
 
 export default function SignInPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useUser();
+  const { isAuthenticated, isLoading, isAdmin } = useUser();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      router.replace("/");
+      router.replace(isAdmin ? "/admin" : "/");
     }
-  }, [isAuthenticated, isLoading, router]);
+  }, [isAuthenticated, isLoading, isAdmin, router]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,14 +44,57 @@ export default function SignInPage() {
         id: userData.id,
         email: userData.email,
         name: userData.name,
+        role: userData.role,
         createdAt: userData.createdAt,
       });
 
       toast.success("Signed in successfully");
-      router.replace("/");
+
+      if (userData.role === "admin") {
+        router.replace("/admin");
+      } else {
+        router.replace("/");
+      }
     } catch (error: any) {
       console.error("sign in error:", error);
       toast.error(error.message || "Invalid email or password");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleQuickLogin = async (type: "user" | "admin") => {
+    const credentials = {
+      user: { email: "123@gmail.com", password: "12345678" },
+      admin: { email: "admin@gmail.com", password: "12345678" },
+    };
+
+    const { email, password } = credentials[type];
+    setEmail(email);
+    setPassword(password);
+    setLoading(true);
+
+    try {
+      const userData = await signIn({ email, password });
+
+      setUser({
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        role: userData.role,
+        createdAt: userData.createdAt,
+      });
+
+      toast.success(`Signed in as ${type}`);
+
+      if (userData.role === "admin") {
+        router.replace("/admin");
+      } else {
+        router.replace("/");
+      }
+    } catch (error: any) {
+      console.error("quick login error:", error);
+      toast.error(error.message || "Quick login failed. Please ensure seed data exists.");
     } finally {
       setLoading(false);
     }
@@ -77,6 +121,8 @@ export default function SignInPage() {
             Sign in to your account
           </p>
         </div>
+
+
 
         <form onSubmit={handleSignIn} className="space-y-4">
           <div className="space-y-2">
@@ -109,6 +155,44 @@ export default function SignInPage() {
             {loading ? "Signing in..." : "Sign In"}
           </Button>
         </form>
+
+        <div className="relative my-2">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-card text-muted-foreground px-2">
+              Quick Access
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <div className="grid grid-cols-2 gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleQuickLogin("user")}
+              disabled={loading}
+              className="gap-2"
+            >
+              <User className="h-4 w-4" />
+              User
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => handleQuickLogin("admin")}
+              disabled={loading}
+              className="gap-2"
+            >
+              <UserCircle className="h-4 w-4" />
+              Admin
+            </Button>
+          </div>
+        </div>
+
+
 
         <div className="mt-6 text-center">
           <p className="text-muted-foreground text-sm">

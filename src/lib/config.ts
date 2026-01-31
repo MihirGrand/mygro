@@ -13,6 +13,19 @@ export const config = {
 
     // chat history endpoint on express backend
     chatHistory: `${API_BASE_URL}/api/chat-history`,
+
+    // admin endpoints
+    admin: {
+      assignedTickets: `${API_BASE_URL}/api/admin/assigned-tickets`,
+      ticketMessages: (ticketId: string) =>
+        `${API_BASE_URL}/api/admin/tickets/${ticketId}/messages`,
+      sendMessage: (ticketId: string) =>
+        `${API_BASE_URL}/api/admin/tickets/${ticketId}/message`,
+      escalate: (ticketId: string) =>
+        `${API_BASE_URL}/api/admin/tickets/${ticketId}/escalate`,
+      resolve: (ticketId: string) =>
+        `${API_BASE_URL}/api/admin/tickets/${ticketId}/resolve`,
+    },
   },
 
   // action webhooks (will be handled by express backend)

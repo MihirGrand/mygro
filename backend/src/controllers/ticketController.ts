@@ -77,6 +77,7 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
       timestamp: new Date(),
       cards: null,
       toolsUsed: [],
+      isHuman: false,
     };
 
     await prisma.chatHistory.update({
@@ -88,7 +89,27 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
       },
     });
 
-    // forward to webhook
+    // check if ticket is escalated - if so, skip AI webhook
+    if (ticket.isEscalated) {
+      console.log("[Agent] Ticket is escalated, skipping AI webhook");
+
+      // update ticket timestamp
+      await prisma.ticket.update({
+        where: { id: ticket.id },
+        data: { updatedAt: new Date() },
+      });
+
+      return ApiResponse.success(res, {
+        success: true,
+        ticket_id: ticket.id,
+        agent_message: null,
+        cards: [],
+        tools_used: [],
+        is_escalated: true,
+      });
+    }
+
+    // forward to webhook (only if not escalated)
     const payload = {
       _id: ticket.id,
       merchant_id,
@@ -165,6 +186,7 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
       timestamp: new Date(),
       cards: cards.length > 0 ? cards : null,
       toolsUsed: toolsUsed,
+      isHuman: false,
     };
 
     await prisma.chatHistory.update({
@@ -188,6 +210,7 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
       agent_message: agentMessage,
       cards,
       tools_used: toolsUsed,
+      is_escalated: false,
     });
   } catch (error) {
     console.error("[Agent] Error:", error);
@@ -219,12 +242,15 @@ export const getTickets = async (req: Request, res: Response) => {
       status: ticket.status,
       priority: ticket.priority,
       title: ticket.title || "Support Request",
+      is_escalated: ticket.isEscalated,
+      escalated_at: ticket.escalatedAt,
       chat_history: (ticket.chatHistory?.messages || []).map((msg: any) => ({
         role: msg.role,
         content: msg.content,
         timestamp: msg.timestamp,
         cards: msg.cards || [],
         tools_used: msg.toolsUsed || [],
+        is_human: msg.isHuman || false,
       })),
       created_at: ticket.createdAt,
       updated_at: ticket.updatedAt,
@@ -267,12 +293,15 @@ export const getTicketById = async (req: Request, res: Response) => {
       status: ticket.status,
       priority: ticket.priority,
       title: ticket.title || "Support Request",
+      is_escalated: ticket.isEscalated,
+      escalated_at: ticket.escalatedAt,
       chat_history: (ticket.chatHistory?.messages || []).map((msg: any) => ({
         role: msg.role,
         content: msg.content,
         timestamp: msg.timestamp,
         cards: msg.cards || [],
         tools_used: msg.toolsUsed || [],
+        is_human: msg.isHuman || false,
       })),
       created_at: ticket.createdAt,
       updated_at: ticket.updatedAt,
@@ -304,6 +333,7 @@ export const getChatHistory = async (req: Request, res: Response) => {
       timestamp: msg.timestamp,
       cards: msg.cards || [],
       tools_used: msg.toolsUsed || [],
+      is_human: msg.isHuman || false,
     }));
 
     return ApiResponse.success(res, { messages });

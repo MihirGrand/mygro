@@ -7,19 +7,20 @@ interface NavItem {
   icon: React.ReactNode;
   active: boolean;
   position: "top" | "bottom";
+  adminOnly?: boolean;
 }
 
-export const NavItems = (pathname: string): NavItem[] => {
+export const NavItems = (pathname: string, isAdmin?: boolean): NavItem[] => {
   function isNavItemActive(nav: string) {
     return pathname === nav || pathname.startsWith(nav);
   }
 
   const navItems: NavItem[] = [
     {
-      name: "My Tickets",
-      href: "/",
+      name: isAdmin ? "Assigned Tickets" : "My Tickets",
+      href: isAdmin ? "/admin" : "/",
       icon: <Ticket size={20} />,
-      active: pathname === "/",
+      active: isAdmin ? isNavItemActive("/admin") : pathname === "/",
       position: "top",
     },
     {

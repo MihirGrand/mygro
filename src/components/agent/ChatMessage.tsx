@@ -9,6 +9,7 @@ import { MessageActions } from "./MessageActions";
 import { MarkdownContent } from "./MarkdownContent";
 import { formatTime } from "./utils";
 import type { ChatMessage as ChatMessageType, ActionCard } from "./types";
+import { UserCircle } from "lucide-react";
 
 interface ChatMessageProps {
   message: ChatMessageType;
@@ -20,6 +21,7 @@ export const ChatMessage = memo(function ChatMessage({
   onAction,
 }: ChatMessageProps) {
   const isUser = message.role === "user";
+  const isHuman = message.isHuman;
 
   return (
     <motion.div
@@ -37,12 +39,22 @@ export const ChatMessage = memo(function ChatMessage({
           isUser ? "items-end" : "items-start",
         )}
       >
+        {/* human agent badge */}
+        {!isUser && isHuman && (
+          <div className="mb-1 flex items-center gap-1">
+            <UserCircle className="h-3 w-3 text-primary" />
+            <span className="text-[10px] text-primary font-medium">human agent</span>
+          </div>
+        )}
+
         <div
           className={cn(
             "relative max-w-full",
             isUser
               ? "bg-primary text-primary-foreground rounded-2xl rounded-br-md px-4 py-2.5"
-              : "text-foreground",
+              : isHuman
+                ? "bg-primary/10 border border-primary/20 rounded-2xl rounded-bl-md px-4 py-2.5"
+                : "text-foreground",
           )}
         >
           {isUser ? (
@@ -53,7 +65,7 @@ export const ChatMessage = memo(function ChatMessage({
             <MarkdownContent content={message.content} />
           )}
 
-          {!isUser && message.toolsUsed && message.toolsUsed.length > 0 && (
+          {!isUser && !isHuman && message.toolsUsed && message.toolsUsed.length > 0 && (
             <ToolsUsed tools={message.toolsUsed} />
           )}
 

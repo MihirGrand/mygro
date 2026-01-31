@@ -3,26 +3,27 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus,
   Search,
   Inbox,
-  FileText,
-  AlertTriangle,
   Clock,
   CheckCircle2,
   AlertCircle,
   MessageSquare,
   ChevronRight,
   RefreshCw,
+  User,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { Card } from "~/components/ui/card";
 import { ScrollArea } from "~/components/ui/scroll-area";
-import { AgentPanel } from "~/components/agent";
-import { fetchUserTickets } from "~/lib/api/tickets";
+import { AdminChatPanel } from "~/components/agent/AdminChatPanel";
+import { fetchAssignedTickets } from "~/lib/api/tickets";
 import type { Ticket } from "~/lib/api/tickets";
+import useUser from "~/hooks/useUser";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 // status config
 const statusConfig = {
@@ -63,7 +64,8 @@ const priorityConfig = {
 
 // format relative time
 function formatRelativeTime(timestamp: string | number): string {
-  const time = typeof timestamp === "string" ? new Date(timestamp).getTime() : timestamp;
+  const time =
+    typeof timestamp === "string" ? new Date(timestamp).getTime() : timestamp;
   const now = Date.now();
   const diff = now - time;
   const minutes = Math.floor(diff / 60000);
@@ -83,7 +85,10 @@ function getTicketTitle(ticket: Ticket): string {
   if (ticket.chat_history && ticket.chat_history.length > 0) {
     const firstUserMessage = ticket.chat_history.find((m) => m.role === "user");
     if (firstUserMessage) {
-      return firstUserMessage.content.slice(0, 60) + (firstUserMessage.content.length > 60 ? "..." : "");
+      return (
+        firstUserMessage.content.slice(0, 60) +
+        (firstUserMessage.content.length > 60 ? "..." : "")
+      );
     }
   }
   return `Ticket ${ticket.ticket_id}`;
@@ -92,9 +97,12 @@ function getTicketTitle(ticket: Ticket): string {
 // get ticket description from chat history
 function getTicketDescription(ticket: Ticket): string {
   if (ticket.chat_history && ticket.chat_history.length > 0) {
-    const lastAssistantMessage = [...ticket.chat_history].reverse().find((m) => m.role === "assistant");
-    if (lastAssistantMessage) {
-      return lastAssistantMessage.content.slice(0, 100) + (lastAssistantMessage.content.length > 100 ? "..." : "");
+    const lastMessage = [...ticket.chat_history].reverse()[0];
+    if (lastMessage) {
+      return (
+        lastMessage.content.slice(0, 100) +
+        (lastMessage.content.length > 100 ? "..." : "")
+      );
     }
   }
   return "No messages yet";
@@ -126,14 +134,16 @@ function TicketCard({
           "group cursor-pointer border p-4 transition-all hover:border-border",
           isSelected
             ? "border-primary/50 bg-primary/5"
-            : "border-transparent bg-card hover:bg-muted/50",
+            : "border-transparent bg-card hover:bg-muted/50"
         )}
         onClick={() => onClick?.(ticket)}
       >
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs">{ticket.ticket_id}</span>
+              <span className="text-muted-foreground text-xs">
+                {ticket.ticket_id}
+              </span>
               <span className={cn("text-xs font-medium", priority.className)}>
                 {priority.label}
               </span>
@@ -143,6 +153,16 @@ function TicketCard({
               {getTicketTitle(ticket)}
             </h3>
 
+            {/* merchant info */}
+            {ticket.merchant && (
+              <div className="mt-1 flex items-center gap-1.5">
+                <User className="h-3 w-3 text-muted-foreground" />
+                <span className="text-muted-foreground text-xs">
+                  {ticket.merchant.name}
+                </span>
+              </div>
+            )}
+
             <p className="text-muted-foreground mt-1 line-clamp-2 text-xs">
               {getTicketDescription(ticket)}
             </p>
@@ -151,7 +171,7 @@ function TicketCard({
               <div
                 className={cn(
                   "flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs",
-                  status.className,
+                  status.className
                 )}
               >
                 <StatusIcon className="h-3 w-3" />
@@ -178,70 +198,8 @@ function TicketCard({
   );
 }
 
-// quick action card
-function QuickActionCard({
-  icon: Icon,
-  label,
-  description,
-  onClick,
-  variant = "default",
-}: {
-  icon: React.ElementType;
-  label: string;
-  description: string;
-  onClick: () => void;
-  variant?: "default" | "primary" | "warning";
-}) {
-  return (
-    <Card
-      className={cn(
-        "group cursor-pointer border p-4 transition-all hover:border-border",
-        variant === "primary" &&
-          "border-primary/20 bg-primary/5 hover:border-primary/40",
-        variant === "warning" &&
-          "border-amber-500/20 bg-amber-500/5 hover:border-amber-500/40",
-        variant === "default" && "border-transparent bg-card hover:bg-muted/50",
-      )}
-      onClick={onClick}
-    >
-      <div className="flex items-start gap-3">
-        <div
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-lg",
-            variant === "primary" && "bg-primary/10 text-primary",
-            variant === "warning" && "bg-amber-500/10 text-amber-500",
-            variant === "default" && "bg-muted text-muted-foreground",
-          )}
-        >
-          <Icon className="h-5 w-5" />
-        </div>
-
-        <div className="min-w-0 flex-1">
-          <h3
-            className={cn(
-              "text-sm font-medium",
-              variant === "primary" && "text-primary",
-              variant === "warning" && "text-amber-600 dark:text-amber-400",
-              variant === "default" && "text-foreground",
-            )}
-          >
-            {label}
-          </h3>
-          <p className="text-muted-foreground mt-0.5 text-xs">{description}</p>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 // empty state component
-function EmptyState({
-  type = "no-tickets",
-  onCreateTicket,
-}: {
-  type?: "no-tickets" | "no-results";
-  onCreateTicket: () => void;
-}) {
+function EmptyState({ type = "no-tickets" }: { type?: "no-tickets" | "no-results" }) {
   if (type === "no-results") {
     return (
       <motion.div
@@ -272,37 +230,45 @@ function EmptyState({
         <Inbox className="text-muted-foreground h-7 w-7" />
       </div>
       <h3 className="text-foreground mt-4 text-sm font-medium">
-        No tickets yet
+        No escalated tickets
       </h3>
       <p className="text-muted-foreground mt-1 max-w-xs text-center text-sm">
-        Start a conversation with our AI agent to create your first ticket.
+        When users request human support, their tickets will appear here.
       </p>
-      <Button size="sm" onClick={onCreateTicket} className="mt-5 gap-1.5">
-        <Plus className="h-4 w-4" />
-        Start Conversation
-      </Button>
     </motion.div>
   );
 }
 
-// main page
-export default function SupportPage() {
+// main admin page
+export default function AdminPage() {
+  const router = useRouter();
+  const { user, isLoading: userLoading, isAdmin } = useUser();
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [isLoadingTickets, setIsLoadingTickets] = useState(true);
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
+  // redirect non-admin users
+  useEffect(() => {
+    if (!userLoading && (!user || !isAdmin)) {
+      toast.error("Access denied. Admin only.");
+      router.replace("/");
+    }
+  }, [user, userLoading, isAdmin, router]);
+
   // fetch tickets on mount
   useEffect(() => {
-    loadTickets();
-  }, []);
+    if (isAdmin) {
+      loadTickets();
+    }
+  }, [isAdmin]);
 
   // load tickets from api
   const loadTickets = useCallback(async () => {
     setIsLoadingTickets(true);
     try {
-      const data = await fetchUserTickets();
+      const data = await fetchAssignedTickets();
       setTickets(data);
     } catch (error) {
       console.error("Failed to load tickets:", error);
@@ -317,12 +283,16 @@ export default function SupportPage() {
     const title = getTicketTitle(ticket).toLowerCase();
     const description = getTicketDescription(ticket).toLowerCase();
     const ticketId = ticket.ticket_id.toLowerCase();
+    const merchantEmail = ticket.merchant?.email?.toLowerCase() || "";
+    const merchantName = ticket.merchant?.name?.toLowerCase() || "";
 
     const matchesSearch =
       searchQuery === "" ||
       title.includes(searchQuery.toLowerCase()) ||
       description.includes(searchQuery.toLowerCase()) ||
-      ticketId.includes(searchQuery.toLowerCase());
+      ticketId.includes(searchQuery.toLowerCase()) ||
+      merchantEmail.includes(searchQuery.toLowerCase()) ||
+      merchantName.includes(searchQuery.toLowerCase());
 
     const matchesStatus =
       statusFilter === "all" || ticket.status === statusFilter;
@@ -335,21 +305,31 @@ export default function SupportPage() {
     setSelectedTicket(ticket);
   }, []);
 
-  // handle create ticket (focus agent panel)
-  const handleStartConversation = useCallback(() => {
-    setSelectedTicket(null);
-  }, []);
-
-  // handle new ticket created from agent
-  const handleTicketCreated = useCallback((ticketId: string) => {
-    // refresh tickets list when new ticket is created
+  // handle ticket resolved or reopened
+  const handleTicketUpdated = useCallback(() => {
     loadTickets();
-  }, [loadTickets]);
+    // refresh selected ticket data
+    if (selectedTicket) {
+      fetchAssignedTickets().then((data) => {
+        const updated = data.find((t) => t._id === selectedTicket._id);
+        if (updated) {
+          setSelectedTicket(updated);
+        }
+      });
+    }
+  }, [loadTickets, selectedTicket]);
 
-  // handle view docs
-  const handleViewDocs = useCallback(() => {
-    window.open("/api/docs", "_blank");
-  }, []);
+  if (userLoading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!isAdmin) {
+    return null;
+  }
 
   return (
     <div className="flex h-full w-full">
@@ -360,10 +340,10 @@ export default function SupportPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-foreground text-xl font-semibold">
-                Support Center
+                Assigned Tickets
               </h1>
               <p className="text-muted-foreground mt-1 text-sm">
-                Manage tickets and get help with platform migration
+                Manage escalated support tickets requiring human assistance
               </p>
             </div>
 
@@ -375,35 +355,12 @@ export default function SupportPage() {
                 disabled={isLoadingTickets}
                 className="gap-1.5"
               >
-                <RefreshCw className={cn("h-4 w-4", isLoadingTickets && "animate-spin")} />
+                <RefreshCw
+                  className={cn("h-4 w-4", isLoadingTickets && "animate-spin")}
+                />
                 Refresh
               </Button>
-
             </div>
-          </div>
-
-          {/* quick actions */}
-          <div className="grid gap-3 sm:grid-cols-3">
-            <QuickActionCard
-              icon={Plus}
-              label="New Conversation"
-              description="Start a support conversation"
-              onClick={handleStartConversation}
-              variant="primary"
-            />
-            <QuickActionCard
-              icon={FileText}
-              label="Documentation"
-              description="Browse API docs & guides"
-              onClick={handleViewDocs}
-            />
-            <QuickActionCard
-              icon={AlertTriangle}
-              label="Report Issue"
-              description="Report a bug or problem"
-              onClick={handleStartConversation}
-              variant="warning"
-            />
           </div>
         </div>
 
@@ -411,17 +368,17 @@ export default function SupportPage() {
         <div className="flex min-h-0 flex-1 flex-col">
           {/* filters */}
           <div className="border-border/40 flex items-center gap-3 border-b px-6 py-3">
-            <div className="relative flex-1 max-w-sm">
+            <div className="relative max-w-sm flex-1">
               <Search className="text-muted-foreground absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2" />
               <Input
-                placeholder="Search tickets..."
+                placeholder="Search by ticket, user..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="h-9 pl-8 text-sm"
               />
             </div>
             <div className="flex items-center gap-1">
-              {["all", "open", "escalated", "in_progress", "resolved"].map((status) => (
+              {["all", "escalated", "in_progress", "resolved"].map((status) => (
                 <Button
                   key={status}
                   variant={statusFilter === status ? "secondary" : "ghost"}
@@ -445,7 +402,9 @@ export default function SupportPage() {
               {isLoadingTickets ? (
                 <div className="flex flex-col items-center justify-center py-16">
                   <RefreshCw className="text-muted-foreground h-6 w-6 animate-spin" />
-                  <p className="text-muted-foreground mt-3 text-sm">Loading tickets...</p>
+                  <p className="text-muted-foreground mt-3 text-sm">
+                    Loading tickets...
+                  </p>
                 </div>
               ) : (
                 <AnimatePresence mode="popLayout">
@@ -459,9 +418,9 @@ export default function SupportPage() {
                       />
                     ))
                   ) : tickets.length > 0 ? (
-                    <EmptyState type="no-results" onCreateTicket={handleStartConversation} />
+                    <EmptyState type="no-results" />
                   ) : (
-                    <EmptyState type="no-tickets" onCreateTicket={handleStartConversation} />
+                    <EmptyState type="no-tickets" />
                   )}
                 </AnimatePresence>
               )}
@@ -470,13 +429,11 @@ export default function SupportPage() {
         </div>
       </div>
 
-      {/* agent panel - fixed width on right */}
+      {/* chat panel - fixed width on right */}
       <div className="border-border/40 hidden h-full w-[28rem] shrink-0 border-l lg:block">
-        <AgentPanel
-          selectedTicketId={selectedTicket?._id}
-          ticketChatHistory={selectedTicket?.chat_history}
-          ticketIsEscalated={selectedTicket?.is_escalated}
-          onTicketCreated={handleTicketCreated}
+        <AdminChatPanel
+          selectedTicket={selectedTicket}
+          onTicketUpdated={handleTicketUpdated}
         />
       </div>
     </div>

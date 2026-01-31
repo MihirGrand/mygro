@@ -13,6 +13,7 @@ interface ChatInputProps {
   onSubmit: () => void;
   isLoading: boolean;
   disabled?: boolean;
+  placeholder?: string;
 }
 
 export const ChatInput = memo(function ChatInput({
@@ -21,6 +22,7 @@ export const ChatInput = memo(function ChatInput({
   onSubmit,
   isLoading,
   disabled,
+  placeholder = "Type your message...",
 }: ChatInputProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isFocused, setIsFocused] = useState(false);
@@ -63,7 +65,7 @@ export const ChatInput = memo(function ChatInput({
             onKeyDown={handleKeyDown}
             onFocus={() => setIsFocused(true)}
             onBlur={() => setIsFocused(false)}
-            placeholder="Type your message..."
+            placeholder={placeholder}
             disabled={disabled || isLoading}
             rows={1}
             className={cn(

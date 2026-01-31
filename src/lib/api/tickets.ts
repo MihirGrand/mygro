@@ -21,6 +21,14 @@ export interface TicketHistoryItem {
   timestamp: string;
   cards?: ActionCard[];
   tools_used?: string[];
+  is_human?: boolean;
+}
+
+// merchant info for admin view
+export interface MerchantInfo {
+  id: string;
+  name: string;
+  email: string;
 }
 
 // ticket from backend
@@ -28,9 +36,13 @@ export interface Ticket {
   _id: string;
   ticket_id: string;
   merchant_id: string;
-  status: "open" | "in_progress" | "resolved" | "closed";
+  merchant?: MerchantInfo;
+  assigned_agent_id?: string;
+  status: "open" | "in_progress" | "escalated" | "resolved" | "closed";
   priority: "low" | "medium" | "high" | "urgent";
   title?: string;
+  is_escalated?: boolean;
+  escalated_at?: string;
   chat_history: TicketHistoryItem[];
   created_at: string;
   updated_at: string;
@@ -39,9 +51,10 @@ export interface Ticket {
 // webhook response structure
 export interface TicketResponse {
   ticket_id: string;
-  agent_message: string;
+  agent_message: string | null;
   cards: ActionCard[];
   tools_used?: string[];
+  is_escalated?: boolean;
 }
 
 // webhook request payload
@@ -136,7 +149,7 @@ export async function fetchTicketById(ticketId: string): Promise<Ticket | null> 
 // update ticket status
 export async function updateTicketStatus(
   ticketId: string,
-  status: "open" | "in_progress" | "resolved" | "closed"
+  status: "open" | "in_progress" | "escalated" | "resolved" | "closed"
 ): Promise<void> {
   const response = await fetch(`${config.api.tickets}/${ticketId}/status`, {
     method: "PATCH",
@@ -182,4 +195,128 @@ export async function fetchChatHistory(ticketId: string): Promise<TicketHistoryI
 
   const data = await response.json();
   return data.data?.messages || [];
+}
+
+// escalate ticket to human agent
+export async function escalateTicket(ticketId: string): Promise<{
+  is_escalated: boolean;
+  system_message: string;
+}> {
+  const user = getUser();
+
+  if (!user?.id) {
+    throw new Error("User not authenticated");
+  }
+
+  const response = await fetch(config.api.admin.escalate(ticketId), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ merchant_id: user.id }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to escalate ticket: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.data;
+}
+
+// admin: fetch assigned (escalated) tickets
+export async function fetchAssignedTickets(): Promise<Ticket[]> {
+  const user = getUser();
+
+  if (!user?.id || user.role !== "admin") {
+    return [];
+  }
+
+  try {
+    const response = await fetch(`${config.api.admin.assignedTickets}?admin_id=${user.id}`);
+
+    if (!response.ok) {
+      console.error("Failed to fetch assigned tickets:", response.statusText);
+      return [];
+    }
+
+    const data = await response.json();
+    return data.data?.tickets || [];
+  } catch (error) {
+    console.error("Error fetching assigned tickets:", error);
+    return [];
+  }
+}
+
+// admin: fetch messages for polling
+export async function fetchTicketMessagesAdmin(
+  ticketId: string,
+  since?: string
+): Promise<TicketHistoryItem[]> {
+  const url = since
+    ? `${config.api.admin.ticketMessages(ticketId)}?since=${encodeURIComponent(since)}`
+    : config.api.admin.ticketMessages(ticketId);
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    if (response.status === 404) {
+      return [];
+    }
+    throw new Error(`Failed to fetch messages: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.data?.messages || [];
+}
+
+// admin: send message (no ai webhook)
+export async function sendAdminMessage(
+  ticketId: string,
+  content: string
+): Promise<{ content: string; timestamp: string; is_human: boolean }> {
+  const user = getUser();
+
+  if (!user?.id || user.role !== "admin") {
+    throw new Error("Not authorized as admin");
+  }
+
+  const response = await fetch(config.api.admin.sendMessage(ticketId), {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      admin_id: user.id,
+      content,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to send message: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return data.data;
+}
+
+// admin: resolve ticket
+export async function resolveTicketAdmin(ticketId: string): Promise<void> {
+  const user = getUser();
+
+  if (!user?.id || user.role !== "admin") {
+    throw new Error("Not authorized as admin");
+  }
+
+  const response = await fetch(config.api.admin.resolve(ticketId), {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ admin_id: user.id }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to resolve ticket: ${response.statusText}`);
+  }
 }

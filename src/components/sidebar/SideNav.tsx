@@ -34,7 +34,7 @@ export default function SideNav() {
   const [isClient, setIsClient] = useState(false);
   const [activePath, setActivePath] = useState("");
 
-  const { user, isLoading: isLoadingUser, signOut } = useUser();
+  const { user, isLoading: isLoadingUser, isAdmin, signOut } = useUser();
 
   useEffect(() => {
     setIsClient(true);
@@ -47,7 +47,7 @@ export default function SideNav() {
   if (isLoadingUser) return <SideNavSkeleton />;
   if (!user) return null;
 
-  const navItems = NavItems(pathname);
+  const navItems = NavItems(pathname, isAdmin);
 
   const handleNavItemClick = (path: string) => {
     setActivePath(path);

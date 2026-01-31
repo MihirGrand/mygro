@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
-import { MessageCircle, Plus } from "lucide-react";
+import { MessageCircle, Plus, UserCircle } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
 import { ChatMessage } from "./ChatMessage";
@@ -14,12 +14,14 @@ import type { TicketHistoryItem } from "./types";
 interface AgentPanelProps {
   selectedTicketId?: string | null;
   ticketChatHistory?: TicketHistoryItem[];
+  ticketIsEscalated?: boolean;
   onTicketCreated?: (ticketId: string) => void;
 }
 
 export function AgentPanel({
   selectedTicketId,
   ticketChatHistory,
+  ticketIsEscalated,
   onTicketCreated,
 }: AgentPanelProps) {
   const {
@@ -29,6 +31,7 @@ export function AgentPanel({
     isLoading,
     scrollRef,
     currentTicketId,
+    isEscalated,
     sendMessage,
     handleActionClick,
     startNewConversation,
@@ -38,9 +41,9 @@ export function AgentPanel({
   // load ticket conversation when selected ticket changes
   useEffect(() => {
     if (selectedTicketId && ticketChatHistory) {
-      loadTicketConversation(selectedTicketId, ticketChatHistory);
+      loadTicketConversation(selectedTicketId, ticketChatHistory, ticketIsEscalated);
     }
-  }, [selectedTicketId, ticketChatHistory, loadTicketConversation]);
+  }, [selectedTicketId, ticketChatHistory, ticketIsEscalated, loadTicketConversation]);
 
   // notify parent when new ticket is created
   useEffect(() => {
@@ -55,12 +58,22 @@ export function AgentPanel({
       <div className="border-border/40 flex h-14 shrink-0 items-center justify-between border-b px-4">
         <div className="flex items-center gap-2">
           <div className="bg-muted flex h-8 w-8 items-center justify-center rounded-lg">
-            <MessageCircle className="text-foreground h-4 w-4" />
+            {isEscalated ? (
+              <UserCircle className="text-primary h-4 w-4" />
+            ) : (
+              <MessageCircle className="text-foreground h-4 w-4" />
+            )}
           </div>
           <div>
-            <h1 className="text-foreground text-sm font-medium">Support</h1>
+            <h1 className="text-foreground text-sm font-medium">
+              {isEscalated ? "Human Support" : "Support"}
+            </h1>
             <p className="text-muted-foreground text-xs">
-              {currentTicketId ? currentTicketId : "New conversation"}
+              {isEscalated
+                ? "Connected to agent"
+                : currentTicketId
+                  ? currentTicketId
+                  : "New conversation"}
             </p>
           </div>
         </div>
@@ -77,6 +90,15 @@ export function AgentPanel({
           </Button>
         )}
       </div>
+
+      {/* escalation banner */}
+      {isEscalated && (
+        <div className="bg-primary/10 border-primary/20 border-b px-4 py-2">
+          <p className="text-primary text-xs">
+            You're now chatting with a human agent. They'll respond shortly.
+          </p>
+        </div>
+      )}
 
       {/* chat area */}
       <ScrollArea className="flex-1" ref={scrollRef}>
@@ -101,6 +123,7 @@ export function AgentPanel({
         onChange={setInputValue}
         onSubmit={sendMessage}
         isLoading={isLoading}
+        placeholder={isEscalated ? "Message human agent..." : undefined}
       />
     </div>
   );

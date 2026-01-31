@@ -12,6 +12,7 @@ export interface UserData {
   id: string;
   email: string;
   name: string;
+  role: "user" | "admin";
   createdAt?: string;
 }
 
@@ -58,6 +59,7 @@ export const useUser = () => {
     user,
     isLoading,
     isAuthenticated: !!user,
+    isAdmin: user?.role === "admin",
     signOut,
   };
 };

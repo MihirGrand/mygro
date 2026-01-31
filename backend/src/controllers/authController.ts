@@ -28,11 +28,13 @@ export const signUp = async (req: Request, res: Response) => {
         name,
         email: email.toLowerCase(),
         password: hashedPassword,
+        role: "user",
       },
       select: {
         id: true,
         name: true,
         email: true,
+        role: true,
         createdAt: true,
       },
     });
@@ -72,6 +74,7 @@ export const signIn = async (req: Request, res: Response) => {
       id: user.id,
       name: user.name,
       email: user.email,
+      role: user.role,
       createdAt: user.createdAt,
     };
 

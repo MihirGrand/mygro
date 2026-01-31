@@ -39,12 +39,17 @@ export const ActionCards = memo(function ActionCards({
         return (
           <Button
             key={card.id}
-            variant={card.style === "primary" ? "default" : "outline"}
+            variant="outline"
             size="sm"
             className={cn(
               "h-8 text-xs",
+              card.style === "primary" &&
+                "border-primary/50 bg-primary/10 text-primary hover:bg-primary/20 hover:border-primary",
               card.style === "destructive" &&
-                "border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground",
+                "border-destructive/50 bg-destructive/10 text-destructive hover:bg-destructive/20 hover:border-destructive",
+              !card.style || card.style === "secondary"
+                ? "border-border"
+                : ""
             )}
             onClick={() => onAction(card)}
           >

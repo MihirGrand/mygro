@@ -23,9 +23,10 @@ export interface TicketMessagePayload {
 // webhook response structure
 export interface AgentResponse {
   ticket_id: string;
-  agent_message: string;
+  agent_message: string | null;
   cards: ActionCard[];
   tools_used?: string[];
+  is_escalated?: boolean;
 }
 
 // reasoning step for chain of thought display
@@ -45,6 +46,7 @@ export interface ChatMessage {
   ticketId?: string;
   reasoning?: ReasoningStep[];
   toolsUsed?: string[];
+  isHuman?: boolean;
 }
 
 // ticket from backend
@@ -52,9 +54,11 @@ export interface Ticket {
   _id: string;
   ticket_id: string;
   merchant_id: string;
-  status: "open" | "in_progress" | "resolved" | "closed";
+  status: "open" | "in_progress" | "escalated" | "resolved" | "closed";
   priority: "low" | "medium" | "high" | "urgent";
   title?: string;
+  is_escalated?: boolean;
+  escalated_at?: string;
   chat_history: TicketHistoryItem[];
   created_at: string;
   updated_at: string;
@@ -67,4 +71,5 @@ export interface TicketHistoryItem {
   timestamp: string;
   cards?: ActionCard[];
   tools_used?: string[];
+  is_human?: boolean;
 }

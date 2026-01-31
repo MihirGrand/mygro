@@ -12,38 +12,45 @@ model User {
   email     String   @unique
   password  String
   name      String
+  role      UserRole @default(user)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  tickets Ticket[]
+  tickets         Ticket[] @relation("MerchantTickets")
+  assignedTickets Ticket[] @relation("AssignedTickets")
 
   @@map("users")
 }
 
 model Ticket {
-  id         String       @id @default(auto()) @map("_id") @db.ObjectId
-  ticketId   String       @unique
-  merchantId String       @db.ObjectId
-  merchant   User         @relation(fields: [merchantId], references: [id])
-  status     TicketStatus @default(open)
-  priority   Priority     @default(medium)
-  title      String?
-  createdAt  DateTime     @default(now())
-  updatedAt  DateTime     @updatedAt
+  id                String       @id @default(auto()) @map("_id") @db.ObjectId
+  ticketId          String       @unique
+  merchantId        String       @db.ObjectId
+  merchant          User         @relation("MerchantTickets", fields: [merchantId], references: [id])
+  assignedAgentId   String?      @db.ObjectId
+  assignedAgent     User?        @relation("AssignedTickets", fields: [assignedAgentId], references: [id])
+  status            TicketStatus @default(open)
+  priority          Priority     @default(medium)
+  title             String?
+  isEscalated       Boolean      @default(false)
+  escalatedAt       DateTime?
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
 
   chatHistory ChatHistory?
 
   @@index([merchantId])
+  @@index([assignedAgentId])
   @@map("tickets")
 }
 
 model ChatHistory {
-  id        String          @id @default(auto()) @map("_id") @db.ObjectId
-  sessionId String          @unique @db.ObjectId
-  ticket    Ticket          @relation(fields: [sessionId], references: [id])
+  id        String        @id @default(auto()) @map("_id") @db.ObjectId
+  sessionId String        @unique @db.ObjectId
+  ticket    Ticket        @relation(fields: [sessionId], references: [id])
   messages  ChatMessage[]
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
 
   @@map("chat_histories")
 }
@@ -54,11 +61,13 @@ type ChatMessage {
   timestamp DateTime @default(now())
   cards     Json?
   toolsUsed String[]
+  isHuman   Boolean  @default(false)
 }
 
 enum TicketStatus {
   open
   in_progress
+  escalated
   resolved
   closed
 }
@@ -68,4 +77,9 @@ enum Priority {
   medium
   high
   urgent
+}
+
+enum UserRole {
+  user
+  admin
 }
