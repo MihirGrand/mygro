@@ -128,9 +128,9 @@ interface AffectedMerchants {
 }
 
 interface AnalyticsData {
-  "top errors": TopError[];
-  "signal frequency": SignalFrequency[];
-  "affected merchants": AffectedMerchants[];
+  signal_frequency: SignalFrequency[];
+  top_errors: TopError[];
+  unique_merchants: number;
 }
 
 // analytics section component
@@ -150,9 +150,9 @@ function AnalyticsSection({ data, isLoading }: { data: AnalyticsData | null; isL
 
   if (!data) return null;
 
-  const topErrors = data["top errors"] || [];
-  const signalFrequency = data["signal frequency"] || [];
-  const affectedMerchants = data["affected merchants"]?.[0]?.unique_merchants || 0;
+  const topErrors = data.top_errors || [];
+  const signalFrequency = data.signal_frequency || [];
+  const affectedMerchants = data.unique_merchants || 0;
   const totalSignals = signalFrequency.reduce((acc, s) => acc + s.count, 0);
   const totalErrors = topErrors.reduce((acc, e) => acc + e.count, 0);
 
@@ -420,8 +420,22 @@ export default function AdminPage() {
     try {
       const response = await fetch("https://abstruse.app.n8n.cloud/webhook/analytics");
       const data = await response.json();
-      // api returns array, take first element
-      setAnalytics(Array.isArray(data) ? data[0] : data);
+      // api returns array of objects, merge them into single object
+      if (Array.isArray(data)) {
+        const merged: AnalyticsData = {
+          signal_frequency: [],
+          top_errors: [],
+          unique_merchants: 0,
+        };
+        for (const item of data) {
+          if (item.signal_frequency) merged.signal_frequency = item.signal_frequency;
+          if (item.top_errors) merged.top_errors = item.top_errors;
+          if (item.unique_merchants !== undefined) merged.unique_merchants = item.unique_merchants;
+        }
+        setAnalytics(merged);
+      } else {
+        setAnalytics(data);
+      }
     } catch (error) {
       console.error("Failed to load analytics:", error);
       setAnalytics(null);
@@ -569,11 +583,19 @@ export default function AdminPage() {
           <ScrollArea className="flex-1">
             <div className="flex flex-col gap-2 p-6">
               {isLoadingTickets ? (
-                <div className="flex flex-col items-center justify-center py-16">
-                  <RefreshCw className="text-muted-foreground h-6 w-6 animate-spin" />
-                  <p className="text-muted-foreground mt-3 text-sm">
-                    Loading tickets...
-                  </p>
+                <div className="flex flex-col gap-2">
+                  {[1, 2, 3, 4].map((i) => (
+                    <Card key={i} className="p-4 border border-border/40 animate-pulse">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 space-y-2">
+                          <div className="h-4 bg-muted rounded w-3/4" />
+                          <div className="h-3 bg-muted rounded w-1/2" />
+                          <div className="h-3 bg-muted rounded w-1/4 mt-3" />
+                        </div>
+                        <div className="h-6 w-16 bg-muted rounded-full" />
+                      </div>
+                    </Card>
+                  ))}
                 </div>
               ) : (
                 <AnimatePresence mode="popLayout">

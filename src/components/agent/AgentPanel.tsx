@@ -15,6 +15,7 @@ interface AgentPanelProps {
   selectedTicketId?: string | null;
   ticketChatHistory?: TicketHistoryItem[];
   ticketIsEscalated?: boolean;
+  ticketStatus?: string;
   onTicketCreated?: (ticketId: string) => void;
   onMessageSent?: () => void;
 }
@@ -23,6 +24,7 @@ export function AgentPanel({
   selectedTicketId,
   ticketChatHistory,
   ticketIsEscalated,
+  ticketStatus,
   onTicketCreated,
   onMessageSent,
 }: AgentPanelProps) {
@@ -39,6 +41,8 @@ export function AgentPanel({
     startNewConversation,
     loadTicketConversation,
   } = useAgentChat();
+
+  const isResolved = ticketStatus === "resolved";
 
   // load ticket conversation when selected ticket changes
   useEffect(() => {
@@ -100,8 +104,17 @@ export function AgentPanel({
         )}
       </div>
 
+      {/* resolved banner */}
+      {isResolved && (
+        <div className="bg-emerald-500/10 border-emerald-500/20 border-b px-4 py-2">
+          <p className="text-emerald-600 text-xs">
+            This ticket has been resolved. Send a new message to reopen the ticket.
+          </p>
+        </div>
+      )}
+
       {/* escalation banner */}
-      {isEscalated && (
+      {isEscalated && !isResolved && (
         <div className="bg-primary/10 border-primary/20 border-b px-4 py-2">
           <p className="text-primary text-xs">
             You're now chatting with a human agent. They'll respond shortly.
@@ -132,7 +145,7 @@ export function AgentPanel({
         onChange={setInputValue}
         onSubmit={sendMessage}
         isLoading={isLoading}
-        placeholder={isEscalated ? "Message human agent..." : undefined}
+        placeholder={isResolved ? "Send message to reopen ticket..." : isEscalated ? "Message human agent..." : undefined}
       />
     </div>
   );

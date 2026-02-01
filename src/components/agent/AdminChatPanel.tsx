@@ -431,6 +431,15 @@ export function AdminChatPanel({
         </div>
       </div>
 
+      {/* resolved banner */}
+      {isResolved && (
+        <div className="bg-emerald-500/10 border-emerald-500/20 border-b px-4 py-2">
+          <p className="text-emerald-600 text-xs">
+            This ticket has been resolved. Send a new message to reopen the ticket.
+          </p>
+        </div>
+      )}
+
       {/* messages */}
       <ScrollArea ref={scrollRef} className="flex-1">
         <div className="flex flex-col gap-4 p-4">

@@ -494,6 +494,7 @@ export default function SupportPage() {
           selectedTicketId={selectedTicket?._id}
           ticketChatHistory={selectedTicket?.chat_history}
           ticketIsEscalated={selectedTicket?.is_escalated}
+          ticketStatus={selectedTicket?.status}
           onTicketCreated={handleTicketCreated}
           onMessageSent={handleMessageSent}
         />

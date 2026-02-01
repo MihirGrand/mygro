@@ -187,6 +187,7 @@ export default function TestingStudioPage() {
   const [loadingTests, setLoadingTests] = useState<Record<string, boolean>>({});
   const [newLogIds, setNewLogIds] = useState<Set<string>>(new Set());
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [page, setPage] = useState(0);
   const loaderRef = useRef<HTMLDivElement>(null);
@@ -194,6 +195,7 @@ export default function TestingStudioPage() {
   // fetch logs from api
   const fetchLogs = useCallback(async (pageNum: number, append = false) => {
     try {
+      if (!append) setIsInitialLoading(true);
       setIsLoadingMore(true);
       const response = await fetch(
         `${API_BASE_URL}/api/logs?page=${pageNum}&limit=50`
@@ -211,6 +213,7 @@ export default function TestingStudioPage() {
       console.error("Failed to fetch logs:", error);
     } finally {
       setIsLoadingMore(false);
+      setIsInitialLoading(false);
     }
   }, []);
 
@@ -446,7 +449,20 @@ export default function TestingStudioPage() {
 
         {/* logs list */}
         <ScrollArea className="flex-1">
-          {logs.length === 0 ? (
+          {isInitialLoading ? (
+            <div className="flex flex-col">
+              {[1, 2, 3, 4, 5, 6].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-4 border-b px-4 py-2 animate-pulse"
+                >
+                  <div className="w-32 h-4 bg-muted rounded" />
+                  <div className="w-44 h-4 bg-muted rounded" />
+                  <div className="flex-1 h-4 bg-muted rounded" />
+                </div>
+              ))}
+            </div>
+          ) : logs.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Terminal className="text-muted-foreground h-12 w-12" />
               <p className="text-muted-foreground mt-4">No logs yet</p>
