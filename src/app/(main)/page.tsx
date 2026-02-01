@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
@@ -105,10 +105,12 @@ function TicketCard({
   ticket,
   onClick,
   isSelected,
+  skipAnimation,
 }: {
   ticket: Ticket;
   onClick?: (ticket: Ticket) => void;
   isSelected?: boolean;
+  skipAnimation?: boolean;
 }) {
   const status = statusConfig[ticket.status] || statusConfig.open;
   const priority = priorityConfig[ticket.priority] || priorityConfig.medium;
@@ -117,7 +119,8 @@ function TicketCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 4 }}
+      layout
+      initial={skipAnimation ? false : { opacity: 0, y: 4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.15 }}
     >
@@ -293,6 +296,7 @@ export default function SupportPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [newChatKey, setNewChatKey] = useState(0);
+  const hasLoadedOnce = useRef(false);
 
   // fetch tickets on mount
   useEffect(() => {
@@ -300,11 +304,14 @@ export default function SupportPage() {
   }, []);
 
   // load tickets from api
-  const loadTickets = useCallback(async () => {
-    setIsLoadingTickets(true);
+  const loadTickets = useCallback(async (isRefetch = false) => {
+    if (!isRefetch) {
+      setIsLoadingTickets(true);
+    }
     try {
       const data = await fetchUserTickets();
       setTickets(data);
+      hasLoadedOnce.current = true;
     } catch (error) {
       console.error("Failed to load tickets:", error);
       setTickets([]);
@@ -351,8 +358,8 @@ export default function SupportPage() {
 
   // handle message sent (refresh tickets to show updates)
   const handleMessageSent = useCallback(() => {
-    // refresh tickets after a short delay to get updated data
-    setTimeout(() => loadTickets(), 500);
+    // refresh tickets after a short delay to get updated data (silent refetch)
+    setTimeout(() => loadTickets(true), 500);
   }, [loadTickets]);
 
   // handle view docs
@@ -380,7 +387,7 @@ export default function SupportPage() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={loadTickets}
+                onClick={() => loadTickets()}
                 disabled={isLoadingTickets}
                 className="gap-1.5"
               >
@@ -465,6 +472,7 @@ export default function SupportPage() {
                         ticket={ticket}
                         onClick={handleTicketSelect}
                         isSelected={ticket._id === selectedTicket?._id}
+                        skipAnimation={hasLoadedOnce.current}
                       />
                     ))
                   ) : tickets.length > 0 ? (

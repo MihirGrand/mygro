@@ -89,7 +89,7 @@ export default function SideNav() {
                   className="stroke-primary-foreground/60"
                 />
               </svg>
-              <span className="text-base font-semibold tracking-tight">MygroAgent</span>
+              <span className="text-base font-semibold tracking-tight">mygroAgent</span>
             </div>
           ) : (
             <svg

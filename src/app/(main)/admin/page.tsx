@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Search,
@@ -12,6 +12,10 @@ import {
   ChevronRight,
   RefreshCw,
   User,
+  BarChart3,
+  Users,
+  AlertOctagon,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "~/lib/utils";
 import { Button } from "~/components/ui/button";
@@ -108,15 +112,146 @@ function getTicketDescription(ticket: Ticket): string {
   return "No messages yet";
 }
 
+// analytics types
+interface TopError {
+  _id: string;
+  count: number;
+}
+
+interface SignalFrequency {
+  _id: string;
+  count: number;
+}
+
+interface AffectedMerchants {
+  unique_merchants: number;
+}
+
+interface AnalyticsData {
+  "top errors": TopError[];
+  "signal frequency": SignalFrequency[];
+  "affected merchants": AffectedMerchants[];
+}
+
+// analytics section component
+function AnalyticsSection({ data, isLoading }: { data: AnalyticsData | null; isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <div className="grid gap-4 sm:grid-cols-3 mb-6">
+        {[1, 2, 3].map((i) => (
+          <Card key={i} className="p-4 border border-border/40 animate-pulse">
+            <div className="h-4 bg-muted rounded w-24 mb-2" />
+            <div className="h-8 bg-muted rounded w-16" />
+          </Card>
+        ))}
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const topErrors = data["top errors"] || [];
+  const signalFrequency = data["signal frequency"] || [];
+  const affectedMerchants = data["affected merchants"]?.[0]?.unique_merchants || 0;
+  const totalSignals = signalFrequency.reduce((acc, s) => acc + s.count, 0);
+  const totalErrors = topErrors.reduce((acc, e) => acc + e.count, 0);
+
+  return (
+    <div className="grid gap-4 sm:grid-cols-3 mb-6">
+      {/* top errors card */}
+      <Card className="p-4 border border-border/40 bg-card">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
+            <AlertOctagon className="h-4 w-4 text-red-500" />
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Top Errors</p>
+            <p className="text-foreground text-lg font-semibold">{totalErrors}</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {topErrors.slice(0, 3).map((error) => (
+            <div key={error._id} className="flex items-center justify-between">
+              <span className="text-xs text-muted-foreground truncate max-w-[120px]">
+                {error._id.replace(/_/g, " ")}
+              </span>
+              <span className="text-xs font-medium text-foreground bg-muted px-1.5 py-0.5 rounded">
+                {error.count}
+              </span>
+            </div>
+          ))}
+          {topErrors.length === 0 && (
+            <p className="text-xs text-muted-foreground">No errors recorded</p>
+          )}
+        </div>
+      </Card>
+
+      {/* signal frequency card */}
+      <Card className="p-4 border border-border/40 bg-card">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-500/10">
+            <TrendingUp className="h-4 w-4 text-blue-500" />
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Signal Frequency</p>
+            <p className="text-foreground text-lg font-semibold">{totalSignals}</p>
+          </div>
+        </div>
+        <div className="space-y-2">
+          {signalFrequency.slice(0, 3).map((signal) => {
+            const date = new Date(signal._id);
+            const formatted = !isNaN(date.getTime())
+              ? date.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric" })
+              : signal._id;
+            return (
+              <div key={signal._id} className="flex items-center justify-between">
+                <span className="text-xs text-muted-foreground">{formatted}</span>
+                <span className="text-xs font-medium text-foreground bg-muted px-1.5 py-0.5 rounded">
+                  {signal.count}
+                </span>
+              </div>
+            );
+          })}
+          {signalFrequency.length === 0 && (
+            <p className="text-xs text-muted-foreground">No signals recorded</p>
+          )}
+        </div>
+      </Card>
+
+      {/* affected merchants card */}
+      <Card className="p-4 border border-border/40 bg-card">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-500/10">
+            <Users className="h-4 w-4 text-amber-500" />
+          </div>
+          <div>
+            <p className="text-muted-foreground text-xs">Affected Merchants</p>
+            <p className="text-foreground text-lg font-semibold">{affectedMerchants}</p>
+          </div>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {affectedMerchants === 0
+            ? "No merchants affected"
+            : affectedMerchants === 1
+              ? "1 unique merchant impacted"
+              : `${affectedMerchants} unique merchants impacted`}
+        </p>
+      </Card>
+    </div>
+  );
+}
+
 // ticket card component
 function TicketCard({
   ticket,
   onClick,
   isSelected,
+  isInitialRender,
 }: {
   ticket: Ticket;
   onClick?: (ticket: Ticket) => void;
   isSelected?: boolean;
+  isInitialRender?: boolean;
 }) {
   const status = statusConfig[ticket.status] || statusConfig.open;
   const priority = priorityConfig[ticket.priority] || priorityConfig.medium;
@@ -125,9 +260,10 @@ function TicketCard({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 4 }}
+      initial={isInitialRender ? { opacity: 0, y: 4 } : false}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.15 }}
+      layout
     >
       <Card
         className={cn(
@@ -248,6 +384,9 @@ export default function AdminPage() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
+  const [isLoadingAnalytics, setIsLoadingAnalytics] = useState(true);
+  const isInitialRenderRef = useRef(true);
 
   // redirect non-admin users
   useEffect(() => {
@@ -261,8 +400,35 @@ export default function AdminPage() {
   useEffect(() => {
     if (isAdmin) {
       loadTickets();
+      loadAnalytics();
     }
   }, [isAdmin]);
+
+  // mark initial render as complete after first load
+  useEffect(() => {
+    if (!isLoadingTickets && isInitialRenderRef.current) {
+      const timer = setTimeout(() => {
+        isInitialRenderRef.current = false;
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [isLoadingTickets]);
+
+  // load analytics from api
+  const loadAnalytics = useCallback(async () => {
+    setIsLoadingAnalytics(true);
+    try {
+      const response = await fetch("https://abstruse.app.n8n.cloud/webhook/analytics");
+      const data = await response.json();
+      // api returns array, take first element
+      setAnalytics(Array.isArray(data) ? data[0] : data);
+    } catch (error) {
+      console.error("Failed to load analytics:", error);
+      setAnalytics(null);
+    } finally {
+      setIsLoadingAnalytics(false);
+    }
+  }, []);
 
   // load tickets from api
   const loadTickets = useCallback(async () => {
@@ -348,21 +514,24 @@ export default function AdminPage() {
             </div>
 
             <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={loadTickets}
-                disabled={isLoadingTickets}
-                className="gap-1.5"
-              >
-                <RefreshCw
-                  className={cn("h-4 w-4", isLoadingTickets && "animate-spin")}
-                />
-                Refresh
-              </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { loadTickets(); loadAnalytics(); }}
+                  disabled={isLoadingTickets || isLoadingAnalytics}
+                  className="gap-1.5"
+                >
+                  <RefreshCw
+                    className={cn("h-4 w-4", (isLoadingTickets || isLoadingAnalytics) && "animate-spin")}
+                  />
+                  Refresh
+                </Button>
+              </div>
             </div>
+
+            {/* analytics section */}
+            <AnalyticsSection data={analytics} isLoading={isLoadingAnalytics} />
           </div>
-        </div>
 
         {/* tickets section */}
         <div className="flex min-h-0 flex-1 flex-col">
@@ -415,6 +584,7 @@ export default function AdminPage() {
                         ticket={ticket}
                         onClick={handleTicketSelect}
                         isSelected={ticket._id === selectedTicket?._id}
+                        isInitialRender={isInitialRenderRef.current}
                       />
                     ))
                   ) : tickets.length > 0 ? (
