@@ -13,6 +13,7 @@ interface Config {
   };
   webhook: {
     ticketUrl: string;
+    resolveTicketUrl: string;
   };
 }
 
@@ -27,6 +28,7 @@ export const config: Config = {
   },
   webhook: {
     ticketUrl: process.env.WEBHOOK_TICKET_URL || "https://abstruse.app.n8n.cloud/webhook/ticket",
+    resolveTicketUrl: process.env.WEBHOOK_RESOLVE_TICKET_URL || "https://abstruse.app.n8n.cloud/webhook/resolve-ticket",
   },
 };
 

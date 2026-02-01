@@ -122,6 +122,10 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
     let agentMessage = "Your request has been received.";
     let cards: any[] = [];
     let toolsUsed: string[] = [];
+    let actionsTaken: string[] = [];
+    let reasoning: any = null;
+    let confidenceScore: number | null = null;
+    let complexityScore: number | null = null;
 
     try {
       const webhookResponse = await fetch(WEBHOOK_URL, {
@@ -160,10 +164,17 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
 
           cards = responseData.cards || [];
           toolsUsed = responseData.tools_used || responseData.toolsUsed || [];
+          actionsTaken = responseData.actions_taken || responseData.actionsTaken || [];
+          reasoning = responseData.reasoning || null;
+          confidenceScore = responseData.confidence_score || responseData.confidenceScore || null;
+          complexityScore = responseData.complexity_score || responseData.complexityScore || null;
 
           console.log("[Agent] Extracted - message:", agentMessage.slice(0, 100) + "...");
           console.log("[Agent] Extracted - cards:", cards.length);
           console.log("[Agent] Extracted - tools_used:", toolsUsed);
+          console.log("[Agent] Extracted - actions_taken:", actionsTaken);
+          console.log("[Agent] Extracted - reasoning:", reasoning);
+          console.log("[Agent] Extracted - confidence:", confidenceScore, "complexity:", complexityScore);
         } catch (parseError) {
           console.error("[Agent] Failed to parse webhook response as JSON");
           console.error("[Agent] Parse error:", parseError);
@@ -186,6 +197,10 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
       timestamp: new Date(),
       cards: cards.length > 0 ? cards : null,
       toolsUsed: toolsUsed,
+      actionsTaken: actionsTaken,
+      reasoning: reasoning,
+      confidenceScore: confidenceScore,
+      complexityScore: complexityScore,
       isHuman: false,
     };
 
@@ -210,6 +225,10 @@ export const sendAgentMessage = async (req: Request, res: Response) => {
       agent_message: agentMessage,
       cards,
       tools_used: toolsUsed,
+      actions_taken: actionsTaken,
+      reasoning,
+      confidence_score: confidenceScore,
+      complexity_score: complexityScore,
       is_escalated: false,
     });
   } catch (error) {
@@ -250,6 +269,10 @@ export const getTickets = async (req: Request, res: Response) => {
         timestamp: msg.timestamp,
         cards: msg.cards || [],
         tools_used: msg.toolsUsed || [],
+        actions_taken: msg.actionsTaken || [],
+        reasoning: msg.reasoning || null,
+        confidence_score: msg.confidenceScore || null,
+        complexity_score: msg.complexityScore || null,
         is_human: msg.isHuman || false,
       })),
       created_at: ticket.createdAt,
@@ -301,6 +324,10 @@ export const getTicketById = async (req: Request, res: Response) => {
         timestamp: msg.timestamp,
         cards: msg.cards || [],
         tools_used: msg.toolsUsed || [],
+        actions_taken: msg.actionsTaken || [],
+        reasoning: msg.reasoning || null,
+        confidence_score: msg.confidenceScore || null,
+        complexity_score: msg.complexityScore || null,
         is_human: msg.isHuman || false,
       })),
       created_at: ticket.createdAt,
@@ -333,6 +360,10 @@ export const getChatHistory = async (req: Request, res: Response) => {
       timestamp: msg.timestamp,
       cards: msg.cards || [],
       tools_used: msg.toolsUsed || [],
+      actions_taken: msg.actionsTaken || [],
+      reasoning: msg.reasoning || null,
+      confidence_score: msg.confidenceScore || null,
+      complexity_score: msg.complexityScore || null,
       is_human: msg.isHuman || false,
     }));
 

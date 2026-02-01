@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import prisma from "../config/database.js";
 import ApiResponse from "../utils/apiResponse.js";
+import { config } from "../config/env.js";
 
 // get all escalated tickets (for admin)
 export const getAssignedTickets = async (req: Request, res: Response) => {
@@ -135,9 +136,6 @@ export const sendAdminMessage = async (req: Request, res: Response) => {
       return ApiResponse.notFound(res, "Ticket not found");
     }
 
-    // if ticket was resolved, reopen it
-    const shouldReopen = ticket.status === "resolved";
-
     // add admin message to chat history
     const adminMessageData = {
       role: "assistant",
@@ -266,6 +264,14 @@ export const resolveTicket = async (req: Request, res: Response) => {
 
     const ticket = await prisma.ticket.findUnique({
       where: { id: ticketId },
+      include: {
+        merchant: {
+          select: {
+            id: true,
+            email: true,
+          },
+        },
+      },
     });
 
     if (!ticket) {
@@ -300,6 +306,24 @@ export const resolveTicket = async (req: Request, res: Response) => {
         },
       },
     });
+
+    // send resolve webhook to n8n for email notification
+    const webhookPayload = {
+      _id: ticketId,
+      merchant_id: ticket.merchantId,
+      email: ticket.merchant?.email || "",
+    };
+
+    try {
+      const webhookResponse = await fetch(config.webhook.resolveTicketUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(webhookPayload),
+      });
+      console.log("[Admin] Resolve webhook sent:", webhookResponse.status);
+    } catch (webhookError) {
+      console.error("[Admin] Failed to send resolve webhook:", webhookError);
+    }
 
     return ApiResponse.success(res, {
       _id: updatedTicket.id,

@@ -26,13 +26,13 @@ async function main() {
   // create test user
   const userPassword = await bcrypt.hash("12345678", 10);
   const user = await prisma.user.upsert({
-    where: { email: "123@gmail.com" },
+    where: { email: "mihirgrand@gmail.com" },
     update: {
       password: userPassword,
       role: "user",
     },
     create: {
-      email: "123@gmail.com",
+      email: "mihirgrand@gmail.com",
       password: userPassword,
       name: "Test User",
       role: "user",
@@ -43,7 +43,7 @@ async function main() {
   console.log("\nSeeding complete!");
   console.log("\nQuick login credentials:");
   console.log("  Admin: admin@gmail.com / 12345678");
-  console.log("  User:  123@gmail.com / 12345678");
+  console.log("  User:  mihirgrand@gmail.com / 12345678");
 }
 
 main()
