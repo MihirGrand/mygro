@@ -29,6 +29,19 @@ export const config = {
 
     // logs endpoints
     logs: `${API_BASE_URL}/api/logs`,
+
+    // docs endpoints
+    docs: {
+      get: `${API_BASE_URL}/api/docs`,
+      update: `${API_BASE_URL}/api/docs/update`,
+      check: `${API_BASE_URL}/api/docs/check`,
+    },
+
+    // github endpoints
+    github: {
+      createIssue: `${API_BASE_URL}/api/github/issue`,
+      getIssue: (issueId: string) => `${API_BASE_URL}/api/github/issue/${issueId}`,
+    },
   },
 
   // action webhooks (will be handled by express backend)
@@ -37,6 +50,8 @@ export const config = {
     escalate: `${API_BASE_URL}/api/actions/escalate`,
     increaseRateLimit: `${API_BASE_URL}/api/actions/increase-rate-limit`,
     resendWebhooks: `${API_BASE_URL}/api/actions/resend-webhooks`,
+    updateDocs: `${API_BASE_URL}/api/docs/update`,
+    createGithubIssue: `${API_BASE_URL}/api/github/issue`,
   },
 
   docs: {

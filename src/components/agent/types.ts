@@ -1,15 +1,11 @@
-// action card from webhook response
-export interface ActionCard {
-  id: string;
-  type: "action_button" | "link";
-  label: string;
-  style?: "primary" | "secondary" | "destructive";
-  url?: string;
-  action_payload?: {
-    webhook_to_call: string;
-    params: Record<string, string>;
-  };
-}
+// re-export types from api/tickets for consistency
+export type {
+  ActionType,
+  ActionCard,
+  AgentReasoning,
+  TicketHistoryItem,
+  Ticket,
+} from "~/lib/api/tickets";
 
 // webhook request payload
 export interface TicketMessagePayload {
@@ -24,9 +20,13 @@ export interface TicketMessagePayload {
 export interface AgentResponse {
   ticket_id: string;
   agent_message: string | null;
-  cards: ActionCard[];
+  cards: import("~/lib/api/tickets").ActionCard[];
   tools_used?: string[];
+  actions_taken?: string[];
   is_escalated?: boolean;
+  reasoning?: import("~/lib/api/tickets").AgentReasoning;
+  confidence_score?: number;
+  complexity_score?: number;
 }
 
 // reasoning step for chain of thought display
@@ -42,34 +42,13 @@ export interface ChatMessage {
   role: "user" | "assistant";
   content: string;
   timestamp: number;
-  cards?: ActionCard[];
+  cards?: import("~/lib/api/tickets").ActionCard[];
   ticketId?: string;
   reasoning?: ReasoningStep[];
+  agentReasoning?: import("~/lib/api/tickets").AgentReasoning;
   toolsUsed?: string[];
+  actionsTaken?: string[];
   isHuman?: boolean;
-}
-
-// ticket from backend
-export interface Ticket {
-  _id: string;
-  ticket_id: string;
-  merchant_id: string;
-  status: "open" | "in_progress" | "escalated" | "resolved" | "closed";
-  priority: "low" | "medium" | "high" | "urgent";
-  title?: string;
-  is_escalated?: boolean;
-  escalated_at?: string;
-  chat_history: TicketHistoryItem[];
-  created_at: string;
-  updated_at: string;
-}
-
-// chat history item stored in backend
-export interface TicketHistoryItem {
-  role: "user" | "assistant";
-  content: string;
-  timestamp: string;
-  cards?: ActionCard[];
-  tools_used?: string[];
-  is_human?: boolean;
+  confidenceScore?: number;
+  complexityScore?: number;
 }

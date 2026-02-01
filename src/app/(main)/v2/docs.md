@@ -1,4 +1,4 @@
-# HealAgent Platform API Documentation v2
+# MygroAgent Platform API Documentation v2
 
 > **Migration Notice**: This documentation covers the v2 API endpoints for the headless e-commerce platform. Merchants migrating from the hosted platform (v1) should review the breaking changes section carefully.
 
@@ -422,31 +422,5 @@ X-RateLimit-Reset: 1698415260
 
 ---
 
-## Support Escalation Matrix
 
-| Severity | Response Time | Examples |
-|----------|---------------|----------|
-| Critical | 15 minutes | Payment processing down, data loss |
-| High | 1 hour | Checkout failures, webhook outages |
-| Medium | 4 hours | Auth errors, rate limiting issues |
-| Low | 24 hours | Documentation questions, feature requests |
 
----
-
-## Agent Tools Reference
-
-The AI support agent has access to the following tools:
-
-1. **search_docs**: Search this documentation for relevant information
-2. **check_merchant_config**: Verify merchant API configuration
-3. **rotate_api_keys**: Generate new API keys (requires approval)
-4. **resend_webhook**: Retry failed webhook delivery
-5. **increase_rate_limit**: Temporarily increase limits (requires engineering)
-6. **create_ticket**: Escalate to human support
-7. **check_endpoint_status**: Verify platform endpoint health
-
----
-
-*Last updated: 2024-01-15*
-*API Version: 2024-01-15*
-*Documentation Version: 2.1.0*

@@ -292,6 +292,7 @@ export default function SupportPage() {
   const [selectedTicket, setSelectedTicket] = useState<Ticket | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [newChatKey, setNewChatKey] = useState(0);
 
   // fetch tickets on mount
   useEffect(() => {
@@ -335,15 +336,23 @@ export default function SupportPage() {
     setSelectedTicket(ticket);
   }, []);
 
-  // handle create ticket (focus agent panel)
+  // handle create ticket (spawn new chat)
   const handleStartConversation = useCallback(() => {
     setSelectedTicket(null);
+    setNewChatKey((prev) => prev + 1);
   }, []);
 
   // handle new ticket created from agent
   const handleTicketCreated = useCallback((ticketId: string) => {
-    // refresh tickets list when new ticket is created
+    // refresh tickets list immediately when new ticket is created
+    console.log("[Page] New ticket created:", ticketId);
     loadTickets();
+  }, [loadTickets]);
+
+  // handle message sent (refresh tickets to show updates)
+  const handleMessageSent = useCallback(() => {
+    // refresh tickets after a short delay to get updated data
+    setTimeout(() => loadTickets(), 500);
   }, [loadTickets]);
 
   // handle view docs
@@ -473,10 +482,12 @@ export default function SupportPage() {
       {/* agent panel - fixed width on right */}
       <div className="border-border/40 hidden h-full w-[28rem] shrink-0 border-l lg:block">
         <AgentPanel
+          key={newChatKey}
           selectedTicketId={selectedTicket?._id}
           ticketChatHistory={selectedTicket?.chat_history}
           ticketIsEscalated={selectedTicket?.is_escalated}
           onTicketCreated={handleTicketCreated}
+          onMessageSent={handleMessageSent}
         />
       </div>
     </div>

@@ -9,13 +9,14 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { ThinkingIndicator } from "./ThinkingIndicator";
 import { useAgentChat } from "./useAgentChat";
-import type { TicketHistoryItem } from "./types";
+import type { TicketHistoryItem } from "~/lib/api/tickets";
 
 interface AgentPanelProps {
   selectedTicketId?: string | null;
   ticketChatHistory?: TicketHistoryItem[];
   ticketIsEscalated?: boolean;
   onTicketCreated?: (ticketId: string) => void;
+  onMessageSent?: () => void;
 }
 
 export function AgentPanel({
@@ -23,6 +24,7 @@ export function AgentPanel({
   ticketChatHistory,
   ticketIsEscalated,
   onTicketCreated,
+  onMessageSent,
 }: AgentPanelProps) {
   const {
     messages,
@@ -51,6 +53,13 @@ export function AgentPanel({
       onTicketCreated(currentTicketId);
     }
   }, [currentTicketId, onTicketCreated, selectedTicketId]);
+
+  // notify parent when message is sent (to refresh ticket list)
+  useEffect(() => {
+    if (messages.length > 1 && onMessageSent) {
+      onMessageSent();
+    }
+  }, [messages.length, onMessageSent]);
 
   return (
     <div className="bg-background flex h-full w-full flex-col">

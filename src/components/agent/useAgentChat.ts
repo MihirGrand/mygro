@@ -2,10 +2,49 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { toast } from "sonner";
-import type { ChatMessage, ActionCard, AgentResponse } from "./types";
+import type { ChatMessage, ActionCard, AgentResponse, ActionType, AgentReasoning } from "./types";
 import { getUser } from "~/hooks/useUser";
 import { config } from "~/lib/config";
-import { escalateTicket, fetchChatHistory } from "~/lib/api/tickets";
+import { escalateTicket, fetchChatHistory, type TicketHistoryItem } from "~/lib/api/tickets";
+
+// helper to safely cast reasoning to AgentReasoning type
+function toAgentReasoning(reasoning: unknown): AgentReasoning | undefined {
+  if (!reasoning || typeof reasoning !== "object") return undefined;
+  const r = reasoning as Record<string, unknown>;
+  return {
+    issue_type: (r.issue_type as AgentReasoning["issue_type"]) || undefined,
+    root_cause: (r.root_cause as string) || undefined,
+    assumptions: (r.assumptions as string[]) || undefined,
+    uncertainties: (r.uncertainties as string[]) || undefined,
+  };
+}
+
+// detect action type from card
+function detectActionType(card: ActionCard): ActionType {
+  const actionType = card.action_payload?.action_type;
+  if (actionType) return actionType;
+
+  const label = (card.label || "").toLowerCase();
+  const webhookPath = (card.action_payload?.webhook_to_call || "").toLowerCase();
+
+  if (label.includes("update doc") || label.includes("documentation") || webhookPath.includes("/docs")) {
+    return "update_docs";
+  }
+  if (label.includes("github") || label.includes("issue") || webhookPath.includes("/github")) {
+    return "create_github_issue";
+  }
+  if (label.includes("human") || label.includes("escalate") || label.includes("talk to")) {
+    return "escalate";
+  }
+  if (label.includes("webhook") || label.includes("resend")) {
+    return "resend_webhook";
+  }
+  if (label.includes("api key") || label.includes("rotate")) {
+    return "rotate_api_keys";
+  }
+
+  return "generic";
+}
 
 // generates unique id
 function generateId(prefix: string) {
@@ -101,7 +140,7 @@ export function useAgentChat() {
       const poll = async () => {
         try {
           const history = await fetchChatHistory(currentTicketId);
-          const loadedMessages: ChatMessage[] = history.map((item, index) => ({
+          const loadedMessages: ChatMessage[] = history.map((item: TicketHistoryItem, index: number) => ({
             id: `polled-${currentTicketId}-${index}`,
             role: item.role,
             content: item.content,
@@ -109,6 +148,10 @@ export function useAgentChat() {
             cards: item.cards,
             ticketId: item.role === "assistant" ? currentTicketId : undefined,
             toolsUsed: item.tools_used,
+            actionsTaken: item.actions_taken,
+            agentReasoning: toAgentReasoning(item.reasoning),
+            confidenceScore: item.confidence_score,
+            complexityScore: item.complexity_score,
             isHuman: item.is_human,
           }));
 
@@ -202,6 +245,10 @@ export function useAgentChat() {
           cards: data.cards || [],
           ticketId: data.ticket_id,
           toolsUsed: data.tools_used || [],
+          actionsTaken: data.actions_taken || [],
+          agentReasoning: data.reasoning,
+          confidenceScore: data.confidence_score,
+          complexityScore: data.complexity_score,
           isHuman: false,
         };
 
@@ -290,21 +337,125 @@ export function useAgentChat() {
 
       // handle other action payloads (non-escalation)
       if (card.action_payload) {
-        console.log("[Agent] Non-escalation action, payload:", card.action_payload);
+        const actionType = detectActionType(card);
+        console.log("[Agent] Action type detected:", actionType, "payload:", card.action_payload);
 
-        toast.info(`Action "${card.label}" triggered`, {
-          description: "Processing your request...",
-        });
+        setIsLoading(true);
 
-        // for now, show a generic success message for other actions
-        const actionMessage: ChatMessage = {
-          id: generateId("msg"),
-          role: "assistant",
-          content: `I've processed your request for "${card.label}". Is there anything else I can help you with?`,
-          timestamp: Date.now(),
-        };
+        try {
+          // handle update_docs action
+          if (actionType === "update_docs") {
+            const params = card.action_payload.params || {};
 
-        setMessages((prev) => [...prev, actionMessage]);
+            // show loading toast
+            toast.loading("Updating documentation...", { id: "docs-update" });
+
+            // intentional 2s delay for visual feedback
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+
+            const response = await fetch(config.actions.updateDocs, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                operation: params.operation || "add",
+                section: params.section || "escalation_webhook",
+                content: params.content,
+              }),
+            });
+
+            const result = await response.json();
+            console.log("[Agent] Docs update result:", result);
+
+            // dismiss loading toast
+            toast.dismiss("docs-update");
+
+            if (response.ok) {
+              toast.success("Documentation Updated", {
+                description: result.data?.action_taken || "Documentation has been updated successfully.",
+              });
+
+              const actionMessage: ChatMessage = {
+                id: generateId("msg"),
+                role: "assistant",
+                content: `I've updated the documentation. ${result.data?.action_taken || "The changes have been applied."} You can view the updated docs at /api/docs`,
+                timestamp: Date.now(),
+                actionsTaken: ["update_docs"],
+              };
+              setMessages((prev) => [...prev, actionMessage]);
+            } else {
+              throw new Error(result.message || "Failed to update documentation");
+            }
+          }
+          // handle create_github_issue action
+          else if (actionType === "create_github_issue") {
+            const params = card.action_payload.params || {};
+            const response = await fetch(config.actions.createGithubIssue, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                title: params.title || "Support Ticket Issue",
+                description: params.description || "Issue reported via support system",
+                issue_type: params.issue_type || "bug",
+                severity: params.severity || "medium",
+                merchant_id: getUser()?.id,
+                ticket_id: currentTicketId,
+                error_code: params.error_code,
+                reproduction_steps: params.reproduction_steps,
+                expected_behavior: params.expected_behavior,
+                actual_behavior: params.actual_behavior,
+              }),
+            });
+
+            const result = await response.json();
+            console.log("[Agent] GitHub issue result:", result);
+
+            if (response.ok) {
+              toast.success("GitHub Issue Created", {
+                description: `Issue "${params.title || "Support Ticket Issue"}" has been created.`,
+              });
+
+              const actionMessage: ChatMessage = {
+                id: generateId("msg"),
+                role: "assistant",
+                content: `I've created a GitHub issue for the engineering team to investigate. They will review and address this issue. Is there anything else I can help you with?`,
+                timestamp: Date.now(),
+                actionsTaken: ["github_issue"],
+              };
+              setMessages((prev) => [...prev, actionMessage]);
+            } else {
+              throw new Error(result.message || "Failed to create GitHub issue");
+            }
+          }
+          // handle generic actions
+          else {
+            toast.info(`Action "${card.label}" triggered`, {
+              description: "Processing your request...",
+            });
+
+            const actionMessage: ChatMessage = {
+              id: generateId("msg"),
+              role: "assistant",
+              content: `I've processed your request for "${card.label}". Is there anything else I can help you with?`,
+              timestamp: Date.now(),
+            };
+            setMessages((prev) => [...prev, actionMessage]);
+          }
+        } catch (error) {
+          console.error("[Agent] Action error:", error);
+          toast.error(`Failed to execute "${card.label}"`, {
+            description: error instanceof Error ? error.message : "An error occurred",
+          });
+
+          const errorMessage: ChatMessage = {
+            id: generateId("msg"),
+            role: "assistant",
+            content: `Sorry, I encountered an error while processing "${card.label}". Please try again.`,
+            timestamp: Date.now(),
+          };
+          setMessages((prev) => [...prev, errorMessage]);
+        } finally {
+          setIsLoading(false);
+        }
       }
     },
     [currentTicketId]
@@ -329,19 +480,12 @@ export function useAgentChat() {
   const loadTicketConversation = useCallback(
     (
       ticketId: string,
-      chatHistory: Array<{
-        role: "user" | "assistant";
-        content: string;
-        timestamp: string;
-        cards?: ActionCard[];
-        tools_used?: string[];
-        is_human?: boolean;
-      }>,
+      chatHistory: TicketHistoryItem[],
       ticketIsEscalated?: boolean
     ) => {
       console.log("[Agent] Loading ticket conversation:", ticketId, "escalated:", ticketIsEscalated);
 
-      const loadedMessages: ChatMessage[] = chatHistory.map((item, index) => ({
+      const loadedMessages: ChatMessage[] = chatHistory.map((item: TicketHistoryItem, index: number) => ({
         id: `loaded-${ticketId}-${index}`,
         role: item.role,
         content: item.content,
@@ -349,6 +493,10 @@ export function useAgentChat() {
         cards: item.cards,
         ticketId: item.role === "assistant" ? ticketId : undefined,
         toolsUsed: item.tools_used,
+        actionsTaken: item.actions_taken,
+        agentReasoning: toAgentReasoning(item.reasoning),
+        confidenceScore: item.confidence_score,
+        complexityScore: item.complexity_score,
         isHuman: item.is_human,
       }));
 

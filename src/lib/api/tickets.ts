@@ -1,6 +1,15 @@
 import { config } from "~/lib/config";
 import { getUser } from "~/hooks/useUser";
 
+// action types for agent capabilities
+export type ActionType =
+  | "escalate"
+  | "update_docs"
+  | "create_github_issue"
+  | "resend_webhook"
+  | "rotate_api_keys"
+  | "generic";
+
 // action card from webhook response
 export interface ActionCard {
   id: string;
@@ -9,9 +18,18 @@ export interface ActionCard {
   style?: "primary" | "secondary" | "destructive";
   url?: string;
   action_payload?: {
+    action_type?: ActionType;
     webhook_to_call: string;
-    params: Record<string, string>;
+    params: Record<string, unknown>;
   };
+}
+
+// agent reasoning for explainability
+export interface AgentReasoning {
+  issue_type?: "migration_issue" | "platform_bug" | "documentation_gap" | "merchant_config" | "unknown";
+  root_cause?: string;
+  assumptions?: string[];
+  uncertainties?: string[];
 }
 
 // chat history item stored in backend
@@ -21,6 +39,10 @@ export interface TicketHistoryItem {
   timestamp: string;
   cards?: ActionCard[];
   tools_used?: string[];
+  actions_taken?: string[];
+  reasoning?: AgentReasoning;
+  confidence_score?: number;
+  complexity_score?: number;
   is_human?: boolean;
 }
 

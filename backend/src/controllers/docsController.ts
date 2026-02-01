@@ -6,8 +6,13 @@ import ApiResponse from "../utils/apiResponse.js";
 // path to docs file (relative to project root)
 const DOCS_PATH = path.join(process.cwd(), "..", "src", "app", "(main)", "v2", "docs.md");
 
+// marker to identify the added section
+const SECTION_MARKER_START = "<!-- MygroAgent_ESCALATION_SECTION_START -->";
+const SECTION_MARKER_END = "<!-- MygroAgent_ESCALATION_SECTION_END -->";
+
 // default docs content marker for reset
 const ESCALATION_WEBHOOK_SECTION = `
+${SECTION_MARKER_START}
 ---
 
 ## Escalation Webhook Format
@@ -54,11 +59,11 @@ X-Event-Type: ticket.escalated
 
 **Note**: This webhook is only triggered for tickets that exceed the complexity threshold (8.5+) or when users explicitly request human support.
 
+${SECTION_MARKER_END}
 `;
 
-// section marker for identification
+// legacy section marker for identification (fallback)
 const SECTION_START_MARKER = "## Escalation Webhook Format";
-const SECTION_END_MARKER = "---\n\n## "; // next section after
 
 // update docs - add or remove section
 export const updateDocs = async (req: Request, res: Response) => {
@@ -84,9 +89,8 @@ export const updateDocs = async (req: Request, res: Response) => {
     let actionTaken = "";
 
     if (operation === "add") {
-      // check if section already exists
-      if (docsContent.includes(SECTION_START_MARKER)) {
-        // section already exists, return success with message
+      // check if section already exists (by marker or content)
+      if (docsContent.includes(SECTION_MARKER_START) || docsContent.includes(SECTION_START_MARKER)) {
         return ApiResponse.success(res, {
           message: "Documentation section already exists",
           action_taken: "Section already present - no changes needed",
@@ -109,40 +113,42 @@ export const updateDocs = async (req: Request, res: Response) => {
         actionTaken = "Appended Escalation Webhook Format section";
       }
     } else if (operation === "remove" || operation === "reset") {
-      // remove the escalation webhook section if it exists
-      if (!docsContent.includes(SECTION_START_MARKER)) {
+      // try removing by markers first (clean removal)
+      if (docsContent.includes(SECTION_MARKER_START) && docsContent.includes(SECTION_MARKER_END)) {
+        const startIdx = docsContent.indexOf(SECTION_MARKER_START);
+        const endIdx = docsContent.indexOf(SECTION_MARKER_END) + SECTION_MARKER_END.length;
+        // also remove any trailing newlines
+        let endWithNewlines = endIdx;
+        while (endWithNewlines < docsContent.length && docsContent[endWithNewlines] === '\n') {
+          endWithNewlines++;
+        }
+        updatedContent = docsContent.slice(0, startIdx) + docsContent.slice(endWithNewlines);
+        actionTaken = "Removed Escalation Webhook Format section";
+      }
+      // fallback: try to find by section header
+      else if (docsContent.includes(SECTION_START_MARKER)) {
+        const headerIdx = docsContent.indexOf(SECTION_START_MARKER);
+        // find the "---" before the section header
+        let sectionStart = docsContent.lastIndexOf("---", headerIdx);
+        if (sectionStart === -1) sectionStart = headerIdx;
+
+        // find next section (## followed by text)
+        const afterHeader = headerIdx + SECTION_START_MARKER.length;
+        const nextSectionMatch = docsContent.slice(afterHeader).search(/\n## [A-Z]/);
+
+        if (nextSectionMatch !== -1) {
+          const sectionEnd = afterHeader + nextSectionMatch;
+          updatedContent = docsContent.slice(0, sectionStart) + docsContent.slice(sectionEnd);
+        } else {
+          // section is at end, remove from start marker to end
+          updatedContent = docsContent.slice(0, sectionStart).trimEnd() + "\n";
+        }
+        actionTaken = "Removed Escalation Webhook Format section (legacy)";
+      } else {
         return ApiResponse.success(res, {
           message: "Section not found, documentation is already in default state",
           action_taken: "no_change",
         });
-      }
-
-      // find and remove the section
-      const sectionStart = docsContent.indexOf("---\n\n## Escalation Webhook Format");
-      if (sectionStart !== -1) {
-        // find the end of this section (next major section or end of file)
-        const afterSection = docsContent.indexOf("\n---\n\n## ", sectionStart + 10);
-        if (afterSection !== -1) {
-          updatedContent =
-            docsContent.slice(0, sectionStart) +
-            docsContent.slice(afterSection);
-        } else {
-          // section is at end, just remove it
-          updatedContent = docsContent.slice(0, sectionStart);
-        }
-        actionTaken = "Removed Escalation Webhook Format section";
-      } else {
-        // try alternative removal
-        const altStart = docsContent.indexOf("## Escalation Webhook Format");
-        if (altStart !== -1) {
-          const nextSection = docsContent.indexOf("\n## ", altStart + 5);
-          if (nextSection !== -1) {
-            updatedContent =
-              docsContent.slice(0, altStart) +
-              docsContent.slice(nextSection + 1);
-          }
-          actionTaken = "Removed Escalation Webhook Format section (alt)";
-        }
       }
     }
 

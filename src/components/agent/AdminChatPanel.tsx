@@ -106,13 +106,18 @@ async function generateSuggestions(
     .map((m) => `${m.role === "user" ? "Customer" : "Support"}: ${m.content}`)
     .join("\n");
 
-  const prompt = `You are a customer support assistant. Based on the following conversation, suggest 3 brief follow-up responses that a human support agent could send. Each suggestion should be helpful, professional, and actionable. Keep each suggestion under 50 characters.
+  const prompt = `You are a customer support assistant helping a human agent respond to customers. Based on the conversation below, suggest 3 SHORT follow-up questions or responses the agent could use.
+
+Rules:
+- Keep each suggestion under 40 characters
+- Make them actionable and helpful
+- Focus on understanding the issue or providing solutions
+- No greetings or pleasantries
 
 Conversation:
 ${chatContext}
 
-Return ONLY a JSON array of 3 strings, no other text. Example format:
-["suggestion 1", "suggestion 2", "suggestion 3"]`;
+Return ONLY a JSON array of 3 strings. Example: ["Can you share the error?", "When did this start?", "Let me check that for you"]`;
 
   try {
     const response = await fetch(
@@ -123,8 +128,8 @@ Return ONLY a JSON array of 3 strings, no other text. Example format:
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 256,
+            temperature: 0.8,
+            maxOutputTokens: 200,
           },
         }),
       }
@@ -142,7 +147,7 @@ Return ONLY a JSON array of 3 strings, no other text. Example format:
     if (jsonMatch) {
       const suggestions = JSON.parse(jsonMatch[0]);
       if (Array.isArray(suggestions)) {
-        return suggestions.slice(0, 3);
+        return suggestions.slice(0, 3).map((s: string) => s.slice(0, 50));
       }
     }
 
@@ -171,34 +176,52 @@ export function AdminChatPanel({
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<NodeJS.Timeout | null>(null);
-  const lastMessageCountRef = useRef<number>(0);
+  const lastTicketIdRef = useRef<string | null>(null);
 
-  // load messages when ticket changes
+  // load messages and generate suggestions when ticket changes
   useEffect(() => {
     if (selectedTicket) {
       setMessages(selectedTicket.chat_history || []);
-      setSuggestions([]);
-      lastMessageCountRef.current = selectedTicket.chat_history?.length || 0;
+
+      // generate suggestions when ticket changes
+      if (
+        selectedTicket._id !== lastTicketIdRef.current &&
+        selectedTicket.is_escalated &&
+        selectedTicket.status !== "resolved" &&
+        selectedTicket.chat_history &&
+        selectedTicket.chat_history.length > 0
+      ) {
+        lastTicketIdRef.current = selectedTicket._id;
+        setSuggestions([]);
+        setIsLoadingSuggestions(true);
+
+        generateSuggestions(selectedTicket.chat_history)
+          .then((newSuggestions) => {
+            setSuggestions(newSuggestions);
+          })
+          .catch(() => {
+            setSuggestions([]);
+          })
+          .finally(() => {
+            setIsLoadingSuggestions(false);
+          });
+      }
     } else {
       setMessages([]);
       setSuggestions([]);
-      lastMessageCountRef.current = 0;
+      lastTicketIdRef.current = null;
     }
   }, [selectedTicket]);
 
-  // auto-generate suggestions when messages change
+  // regenerate suggestions when new user message arrives via polling
   useEffect(() => {
     if (
       messages.length > 0 &&
-      messages.length !== lastMessageCountRef.current &&
       selectedTicket?.is_escalated &&
       selectedTicket?.status !== "resolved"
     ) {
-      lastMessageCountRef.current = messages.length;
-
-      // only generate if last message is from user
       const lastMessage = messages[messages.length - 1];
-      if (lastMessage?.role === "user") {
+      if (lastMessage?.role === "user" && !isLoadingSuggestions) {
         setIsLoadingSuggestions(true);
         generateSuggestions(messages)
           .then((newSuggestions) => {
@@ -212,7 +235,7 @@ export function AdminChatPanel({
           });
       }
     }
-  }, [messages, selectedTicket]);
+  }, [messages.length, selectedTicket?.is_escalated, selectedTicket?.status]);
 
   // scroll to bottom on new messages
   useEffect(() => {
@@ -296,7 +319,9 @@ export function AdminChatPanel({
     setMessages((prev) => [...prev, resolutionMessage]);
 
     try {
+      // resolve ticket in backend (webhook is sent from backend)
       await resolveTicketAdmin(selectedTicket._id);
+
       toast.success("Ticket resolved");
       onTicketUpdated?.();
     } catch (error) {
@@ -427,14 +452,14 @@ export function AdminChatPanel({
       </ScrollArea>
 
       {/* suggestions */}
-      {!isResolved && selectedTicket.is_escalated && (suggestions.length > 0 || isLoadingSuggestions) && (
+      {!isResolved && selectedTicket.is_escalated && (
         <div className="border-border/40 border-t px-3 py-2">
           {isLoadingSuggestions ? (
             <div className="flex items-center gap-2 text-muted-foreground text-xs">
               <Loader2 className="h-3 w-3 animate-spin" />
               <span>Generating suggestions...</span>
             </div>
-          ) : (
+          ) : suggestions.length > 0 ? (
             <div className="flex flex-wrap gap-1.5">
               {suggestions.map((suggestion, index) => (
                 <motion.button
@@ -449,22 +474,17 @@ export function AdminChatPanel({
                 </motion.button>
               ))}
             </div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => handleSendMessage("Let me review your case and get back to you shortly.")}
+                className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              >
+                <Clock className="h-3 w-3" />
+                Need time to review
+              </button>
+            </div>
           )}
-        </div>
-      )}
-
-      {/* quick actions */}
-      {!isResolved && selectedTicket.is_escalated && suggestions.length === 0 && !isLoadingSuggestions && (
-        <div className="border-border/40 border-t px-3 py-2">
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              onClick={() => handleSendMessage("Let me review your case and get back to you shortly.")}
-              className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-            >
-              <Clock className="h-3 w-3" />
-              Need time to review
-            </button>
-          </div>
         </div>
       )}
 

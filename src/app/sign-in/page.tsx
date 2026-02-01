@@ -65,7 +65,7 @@ export default function SignInPage() {
 
   const handleQuickLogin = async (type: "user" | "admin") => {
     const credentials = {
-      user: { email: "123@gmail.com", password: "12345678" },
+      user: { email: "mihirgrand@gmail.com", password: "12345678" },
       admin: { email: "admin@gmail.com", password: "12345678" },
     };
 

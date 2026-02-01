@@ -4,23 +4,22 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import {
   Activity,
   Terminal,
-  RefreshCw,
   Play,
   AlertTriangle,
-  Clock,
-  Key,
-  Shield,
-  Zap,
-  Server,
-  Database,
   Wifi,
+  Shield,
+  AlertCircle,
+  Clock,
+  Zap,
   Loader2,
+  Key,
+  Bug,
 } from "lucide-react";
 import { ScrollArea } from "~/components/ui/scroll-area";
 import { Button } from "~/components/ui/button";
-import { Input } from "~/components/ui/input";
 import { cn } from "~/lib/utils";
 import { toast } from "sonner";
+import { getUser } from "~/hooks/useUser";
 
 // types
 interface SystemLog {
@@ -38,132 +37,130 @@ interface TestCard {
   title: string;
   description: string;
   icon: React.ReactNode;
-  errorCode: string;
-  endpoint: string;
-  defaultValue: string;
-  correctValue: string;
-  inputLabel: string;
-  inputPlaceholder: string;
+  severity: "low" | "medium" | "high" | "critical";
   eventType: string;
+  errorCode: string;
+  serviceSource: string;
+  payload: Record<string, unknown>;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
-const WEBHOOK_URL =
-  "https://abstruse.app.n8n.cloud/webhook-test/system-signal";
+const WEBHOOK_URL = "https://abstruse.app.n8n.cloud/webhook/system-signal";
 
-// test cards configuration
+// test cards with exact payloads
 const TEST_CARDS: TestCard[] = [
   {
-    id: "api-token",
-    title: "API Token Mismatch",
-    description: "Invalid API key auth",
+    id: "auth-failure",
+    title: "Auth Failure",
+    description: "Invalid API token, doesn't match environment",
     icon: <Key className="h-4 w-4" />,
-    errorCode: "AUTH_401",
-    endpoint: "GET /v2/products",
-    defaultValue: "sk_test_invalid_token",
-    correctValue: "sk_live_valid_token",
-    inputLabel: "API Token",
-    inputPlaceholder: "Enter API token",
+    severity: "medium",
     eventType: "auth_failure",
+    errorCode: "AUTH_401",
+    serviceSource: "api_gateway",
+    payload: {
+      description: "Invalid API Token. Token does not match environment.",
+      endpoint: "GET /v2/products",
+      client_ip: "192.168.1.50",
+    },
   },
   {
-    id: "cors",
-    title: "CORS Error",
-    description: "Cross-origin failure",
+    id: "webhook-dead-letter",
+    title: "Webhook Dead Letter",
+    description: "Target server timed out after 10s",
+    icon: <Wifi className="h-4 w-4" />,
+    severity: "high",
+    eventType: "webhook_dead_letter",
+    errorCode: "WH_TIMEOUT",
+    serviceSource: "webhook_dispatcher",
+    payload: {
+      description: "Target server timed out after 10s.",
+      target_url: "https://api.merchant.com/orders",
+      attempt_count: 5,
+    },
+  },
+  {
+    id: "cors-explosion",
+    title: "CORS Explosion",
+    description: "Browser blocked request, origin not allowed",
     icon: <Shield className="h-4 w-4" />,
-    errorCode: "CORS_403",
-    endpoint: "OPTIONS /v2/checkout",
-    defaultValue: "http://malicious-site.com",
-    correctValue: "https://shop.merchant.com",
-    inputLabel: "Origin",
-    inputPlaceholder: "Enter origin URL",
-    eventType: "cors_violation",
+    severity: "medium",
+    eventType: "cors_explosion",
+    errorCode: "CORS_BLOCK",
+    serviceSource: "storefront_sdk",
+    payload: {
+      description: "Browser blocked request. Origin not allowed.",
+      origin_domain: "https://new-checkout.merchant.com",
+      blocked_resource: "https://api.platform.com/checkout",
+    },
+  },
+  {
+    id: "regression-signal",
+    title: "Regression Signal",
+    description: "High error rate detected after deployment",
+    icon: <AlertCircle className="h-4 w-4" />,
+    severity: "critical",
+    eventType: "regression_signal",
+    errorCode: "SYS_500",
+    serviceSource: "checkout_service",
+    payload: {
+      description: "High error rate detected after deployment v4.5.2.",
+      threshold_breached: "15% error rate",
+      root_exception: "NullPointerException in PaymentController",
+    },
+  },
+  {
+    id: "null-pointer",
+    title: "Null Pointer Exception",
+    description: "Null reference encountered in code",
+    icon: <Bug className="h-4 w-4" />,
+    severity: "high",
+    eventType: "null_pointer",
+    errorCode: "NPE_500",
+    serviceSource: "checkout_service",
+    payload: {
+      description: "NullPointerException in PaymentController.processOrder()",
+      stack_trace: "at PaymentController.java:142",
+      affected_service: "payment-processor",
+    },
+  },
+  {
+    id: "migration-delay",
+    title: "Migration Delay",
+    description: "Inventory sync is running behind",
+    icon: <Clock className="h-4 w-4" />,
+    severity: "low",
+    eventType: "migration_delay",
+    errorCode: "SYNC_LAG",
+    serviceSource: "sync_worker",
+    payload: {
+      description: "Inventory sync is running 120s behind.",
+      lag_seconds: 120,
+      entity_type: "inventory",
+    },
   },
   {
     id: "rate-limit",
-    title: "Rate Limit Error",
-    description: "API rate limiting (429)",
+    title: "Rate Limit",
+    description: "Merchant exceeded request limit",
     icon: <Zap className="h-4 w-4" />,
+    severity: "medium",
+    eventType: "rate_limit",
     errorCode: "RATE_429",
-    endpoint: "POST /v2/orders/bulk",
-    defaultValue: "1500",
-    correctValue: "100",
-    inputLabel: "Requests/min",
-    inputPlaceholder: "Enter request count",
-    eventType: "rate_limit_exceeded",
-  },
-  {
-    id: "webhook-fail",
-    title: "Webhook Failure",
-    description: "Failed webhook delivery",
-    icon: <Wifi className="h-4 w-4" />,
-    errorCode: "WEBHOOK_FAIL",
-    endpoint: "POST /webhooks/order-created",
-    defaultValue: "https://invalid-endpoint.local",
-    correctValue: "https://merchant.com/webhooks",
-    inputLabel: "Webhook URL",
-    inputPlaceholder: "Enter webhook URL",
-    eventType: "webhook_failure",
-  },
-  {
-    id: "timeout",
-    title: "API Timeout",
-    description: "Slow API response",
-    icon: <Clock className="h-4 w-4" />,
-    errorCode: "TIMEOUT_504",
-    endpoint: "GET /v2/inventory/sync",
-    defaultValue: "30000",
-    correctValue: "5000",
-    inputLabel: "Timeout (ms)",
-    inputPlaceholder: "Enter timeout in ms",
-    eventType: "api_timeout",
-  },
-  {
-    id: "db-error",
-    title: "Database Error",
-    description: "DB connection failure",
-    icon: <Database className="h-4 w-4" />,
-    errorCode: "DB_500",
-    endpoint: "POST /v2/products/create",
-    defaultValue: "invalid-connection-string",
-    correctValue: "postgresql://localhost:5432",
-    inputLabel: "DB Connection",
-    inputPlaceholder: "Enter connection string",
-    eventType: "database_error",
-  },
-  {
-    id: "ssl-error",
-    title: "SSL Certificate Error",
-    description: "Invalid SSL cert",
-    icon: <Shield className="h-4 w-4" />,
-    errorCode: "SSL_ERR",
-    endpoint: "POST /v2/payments/process",
-    defaultValue: "expired-cert",
-    correctValue: "valid-cert",
-    inputLabel: "Certificate",
-    inputPlaceholder: "Enter cert status",
-    eventType: "ssl_error",
-  },
-  {
-    id: "payload-error",
-    title: "Invalid JSON Payload",
-    description: "Malformed request body",
-    icon: <Server className="h-4 w-4" />,
-    errorCode: "PARSE_400",
-    endpoint: "POST /v2/checkout/create",
-    defaultValue: '{"items": [invalid]}',
-    correctValue: '{"items": []}',
-    inputLabel: "Payload",
-    inputPlaceholder: "Enter JSON payload",
-    eventType: "payload_error",
+    serviceSource: "api_gateway",
+    payload: {
+      description: "Merchant exceeded 100 req/sec limit.",
+      current_usage: 150,
+      limit_type: "concurrent_requests",
+    },
   },
 ];
 
-const SEVERITY_COLORS = {
-  low: "text-slate-500",
-  medium: "text-yellow-500",
-  high: "text-orange-500",
-  critical: "text-red-500",
+const SEVERITY_COLORS: Record<string, string> = {
+  low: "text-slate-500 dark:text-slate-400",
+  medium: "text-yellow-600 dark:text-yellow-500",
+  high: "text-orange-600 dark:text-orange-500",
+  critical: "text-red-600 dark:text-red-500",
 };
 
 // generates unique ids
@@ -187,7 +184,6 @@ function formatTimestamp(timestamp: string) {
 export default function TestingStudioPage() {
   const [logs, setLogs] = useState<SystemLog[]>([]);
   const [isLive, setIsLive] = useState(true);
-  const [testInputs, setTestInputs] = useState<Record<string, string>>({});
   const [loadingTests, setLoadingTests] = useState<Record<string, boolean>>({});
   const [newLogIds, setNewLogIds] = useState<Set<string>>(new Set());
   const [isLoadingMore, setIsLoadingMore] = useState(false);
@@ -251,46 +247,37 @@ export default function TestingStudioPage() {
   // triggers test and sends webhook
   const triggerTest = useCallback(
     async (card: TestCard) => {
-      const inputValue = testInputs[card.id] || card.defaultValue;
-      const isError = inputValue !== card.correctValue;
+      const user = getUser();
+      if (!user) {
+        toast.error("Please sign in to trigger tests");
+        return;
+      }
 
       setLoadingTests((prev) => ({ ...prev, [card.id]: true }));
 
       const timestamp = new Date().toISOString();
-      const merchantId = `MERCH-${Math.floor(Math.random() * 1000)
-        .toString()
-        .padStart(3, "0")}`;
+      const merchantId = user.id;
 
-      // webhook payload
+      // webhook payload in exact required format
       const webhookPayload = {
         event_type: card.eventType,
-        severity: isError ? "medium" : "low",
+        severity: card.severity,
         timestamp,
         merchant_id: merchantId,
-        email: "merchant@example.com",
-        service_source: "api_gateway",
-        error_code: isError ? card.errorCode : "SUCCESS",
-        payload: {
-          description: isError
-            ? `${card.title}. Expected "${card.correctValue}" but received "${inputValue}".`
-            : `Test passed for ${card.title}`,
-          endpoint: card.endpoint,
-          client_ip: "192.168.1." + Math.floor(Math.random() * 255),
-          test_input: inputValue,
-          expected_value: card.correctValue,
-        },
+        email: user.email,
+        service_source: card.serviceSource,
+        error_code: card.errorCode,
+        payload: card.payload,
       };
 
-      // local log
+      // local log entry
       const logEntry: SystemLog = {
         id: generateId("log"),
         timestamp,
-        event_type: isError ? card.errorCode : "TEST_SUCCESS",
-        source: card.title,
-        severity: isError ? "medium" : "low",
-        message: isError
-          ? `${card.errorCode}: Expected "${card.correctValue}" but got "${inputValue}"`
-          : `Test passed: ${card.title}`,
+        event_type: card.eventType.toUpperCase(),
+        source: card.serviceSource,
+        severity: card.severity,
+        message: `${card.errorCode}: ${(card.payload as { description?: string }).description || card.description}`,
         trace_id: merchantId,
       };
 
@@ -307,44 +294,51 @@ export default function TestingStudioPage() {
         console.error("Failed to save log:", error);
       }
 
+      // send webhook
       try {
         const response = await fetch(WEBHOOK_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(webhookPayload),
         });
 
         if (response.ok) {
-          toast.success("Webhook sent");
+          toast.success(`Sent: ${card.title}`, {
+            description: `${card.eventType} → Agent triggered`,
+          });
+
           const successLog: SystemLog = {
             id: generateId("log"),
             timestamp: new Date().toISOString(),
-            event_type: "WEBHOOK_DELIVERED",
-            source: "webhook-service",
+            event_type: "WEBHOOK_SENT",
+            source: "testing-studio",
             severity: "low",
-            message: `Webhook delivered - Merchant: ${merchantId}`,
+            message: `Signal sent to agent: ${card.eventType}`,
             trace_id: merchantId,
           };
           addLog(successLog);
+
           await fetch(`${API_BASE_URL}/api/logs`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(successLog),
           });
         } else {
-          toast.error("Webhook failed");
+          toast.error(`Failed: ${card.title}`, {
+            description: `Status ${response.status}`,
+          });
+
           const failLog: SystemLog = {
             id: generateId("log"),
             timestamp: new Date().toISOString(),
             event_type: "WEBHOOK_FAILED",
-            source: "webhook-service",
+            source: "testing-studio",
             severity: "high",
             message: `Webhook failed with status ${response.status}`,
             trace_id: merchantId,
           };
           addLog(failLog);
+
           await fetch(`${API_BASE_URL}/api/logs`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -352,17 +346,21 @@ export default function TestingStudioPage() {
           });
         }
       } catch (error) {
-        toast.error("Failed to send webhook");
+        toast.error(`Error: ${card.title}`, {
+          description: error instanceof Error ? error.message : "Unknown error",
+        });
+
         const errorLog: SystemLog = {
           id: generateId("log"),
           timestamp: new Date().toISOString(),
           event_type: "WEBHOOK_ERROR",
-          source: "webhook-service",
+          source: "testing-studio",
           severity: "critical",
-          message: `Webhook error: ${error instanceof Error ? error.message : "Unknown error"}`,
+          message: `Error: ${error instanceof Error ? error.message : "Unknown"}`,
           trace_id: merchantId,
         };
         addLog(errorLog);
+
         await fetch(`${API_BASE_URL}/api/logs`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -372,13 +370,14 @@ export default function TestingStudioPage() {
         setLoadingTests((prev) => ({ ...prev, [card.id]: false }));
       }
     },
-    [testInputs, addLog]
+    [addLog]
   );
 
   const clearLogs = useCallback(async () => {
     setLogs([]);
     try {
       await fetch(`${API_BASE_URL}/api/logs`, { method: "DELETE" });
+      toast.success("Logs cleared");
     } catch (error) {
       console.error("Failed to clear logs:", error);
     }
@@ -401,7 +400,7 @@ export default function TestingStudioPage() {
                     Testing Studio
                   </h1>
                   <p className="text-muted-foreground hidden text-sm sm:block">
-                    Simulate errors and monitor system signals
+                    Trigger signals to test the self-healing agent
                   </p>
                 </div>
               </div>
@@ -471,7 +470,7 @@ export default function TestingStudioPage() {
                   <span
                     className={cn(
                       "w-44 shrink-0 text-xs font-medium uppercase",
-                      SEVERITY_COLORS[log.severity]
+                      SEVERITY_COLORS[log.severity] || "text-muted-foreground"
                     )}
                   >
                     {log.event_type.replace(/_/g, " ")}
@@ -481,9 +480,11 @@ export default function TestingStudioPage() {
                       [{log.source}]
                     </span>{" "}
                     <span className="text-muted-foreground">{log.message}</span>
-                    <span className="text-muted-foreground ml-2 opacity-60">
-                      merchant={log.trace_id}
-                    </span>
+                    {log.trace_id && (
+                      <span className="text-muted-foreground ml-2 opacity-60">
+                        id={log.trace_id.slice(-8)}
+                      </span>
+                    )}
                   </span>
                 </div>
               ))}
@@ -516,89 +517,69 @@ export default function TestingStudioPage() {
 
       {/* test cards panel */}
       <div className="hidden w-80 border-l lg:block">
-        <div className="bg-background/95 border-b px-3 py-2.5">
+        <div className="bg-background/95 border-b px-4 py-3">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="text-primary h-4 w-4" />
-            <h2 className="text-sm font-semibold">Error Simulators</h2>
+            <AlertTriangle className="text-muted-foreground h-4 w-4" />
+            <h2 className="text-sm font-semibold">Signal Triggers</h2>
           </div>
           <p className="text-muted-foreground mt-0.5 text-xs">
-            Test the self-healing agent
+            Send test signals to the agent
           </p>
         </div>
 
         <ScrollArea className="h-[calc(100vh-80px)]">
-          <div className="space-y-2 p-2">
-            {TEST_CARDS.map((card) => {
-              const isError =
-                (testInputs[card.id] ?? card.defaultValue) !== card.correctValue;
-              return (
-                <div
-                  key={card.id}
-                  className="rounded-lg border border-border/50 bg-card p-2.5"
-                >
-                  {/* card header */}
-                  <div className="flex items-start gap-2 mb-2">
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-muted">
-                      <span className="text-muted-foreground">{card.icon}</span>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <h3 className="text-xs font-medium leading-tight">
-                        {card.title}
-                      </h3>
-                      <p className="text-muted-foreground text-[10px] mt-0.5">
-                        {card.description}
-                      </p>
-                    </div>
+          <div className="space-y-3 p-3">
+            {TEST_CARDS.map((card) => (
+              <div
+                key={card.id}
+                className="rounded-lg border border-border bg-card p-3"
+              >
+                {/* card header */}
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                    {card.icon}
                   </div>
-
-                  {/* correct value hint */}
-                  <div className="text-[10px] text-muted-foreground mb-1.5">
-                    Expected:{" "}
-                    <code className="bg-muted px-1 py-0.5 rounded text-[10px]">
-                      {card.correctValue.length > 20
-                        ? card.correctValue.slice(0, 20) + "..."
-                        : card.correctValue}
-                    </code>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-medium leading-tight">
+                      {card.title}
+                    </h3>
+                    <p className="text-muted-foreground text-xs mt-0.5">
+                      {card.description}
+                    </p>
                   </div>
-
-                  {/* input */}
-                  <Input
-                    id={card.id}
-                    placeholder={card.inputPlaceholder}
-                    value={testInputs[card.id] ?? card.defaultValue}
-                    onChange={(e) =>
-                      setTestInputs((prev) => ({
-                        ...prev,
-                        [card.id]: e.target.value,
-                      }))
-                    }
-                    className="h-7 text-xs font-mono mb-2"
-                  />
-
-                  {/* test button */}
-                  <button
-                    onClick={() => triggerTest(card)}
-                    disabled={loadingTests[card.id]}
-                    className={cn(
-                      "w-full h-7 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5",
-                      isError
-                        ? "bg-emerald-400/10 text-emerald-400 hover:bg-emerald-400/20"
-                        : "bg-primary/10 text-emerald-400 hover:bg-primary/20",
-                      loadingTests[card.id] && "opacity-50 cursor-not-allowed"
-                    )}
-                  >
-                    {loadingTests[card.id] ? (
-                      <>
-                        <RefreshCw className="h-3 w-3 animate-spin" />
-                        Testing...
-                      </>
-                    ) : (
-                      "Test"
-                    )}
-                  </button>
                 </div>
-              );
-            })}
+
+                {/* metadata */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium uppercase">
+                    {card.severity}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-mono">
+                    {card.errorCode}
+                  </span>
+                </div>
+
+                {/* test button */}
+                <button
+                  onClick={() => triggerTest(card)}
+                  disabled={loadingTests[card.id]}
+                  className={cn(
+                    "w-full h-8 rounded-md text-xs font-medium transition-colors flex items-center justify-center gap-1.5 border border-border",
+                    "bg-muted/50 text-muted-foreground hover:bg-muted hover:text-foreground",
+                    loadingTests[card.id] && "opacity-50 cursor-not-allowed"
+                  )}
+                >
+                  {loadingTests[card.id] ? (
+                    <>
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    "Trigger"
+                  )}
+                </button>
+              </div>
+            ))}
           </div>
         </ScrollArea>
       </div>
